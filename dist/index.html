@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f2428">
+  <meta name="description" content="친구들과 일정, 동선, 여행 비용을 실시간으로 관리하는 여행 플래너">
+  <title>여행계획닷컴 beta — 함께 만드는 여행</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231f2428'/%3E%3Cpath d='M32 11v42M11 32h42M17 17l30 30M47 17 17 47' stroke='%236bc6ff' stroke-width='6' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='7' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=Newsreader:ital,wght@1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./airy.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="여행계획닷컴 홈"><span class="brand-mark" aria-hidden="true">✳</span><span>여행계획닷컴</span><sup>beta</sup></a>
+      <div class="header-actions">
+        <p class="autosave-status" id="syncStatus">여행을 불러오는 중</p>
+        <div class="member-stack" id="memberStack" aria-label="여행 구성원" hidden></div>
+        <button class="profile-button" type="button" aria-label="계정 메뉴" data-open-dialog="accountDialog">
+          <span class="google-g">G</span>
+          <span id="profileLabel">Google 로그인</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="planner-layout">
+      <section class="itinerary-panel" aria-label="여행 일정">
+        <div class="trip-switcher">
+          <label for="tripSelect">내 여행</label>
+          <div>
+            <select id="tripSelect" aria-label="여행 선택"><option>여행 없음</option></select>
+            <button type="button" id="manageTripsButton">여행 관리</button>
+          </div>
+        </div>
+        <div class="day-tabs" id="dayTabs" role="tablist" aria-label="여행 날짜"></div>
+        <div class="traveler-filter"><label for="travelerFilter">동행별 일정</label><select id="travelerFilter"><option value="all">모두 보기</option></select></div>
+        <div class="agenda-heading">
+          <span id="itemCount">0개의 일정</span>
+        </div>
+        <div class="agenda-list" id="agendaList" aria-live="polite"></div>
+        <button class="add-schedule-button" type="button" id="addScheduleButton"><span>＋</span> 일정 추가</button>
+        <div class="settlement-row"><button class="settlement-button" type="button" data-open-dialog="settlementDialog"><span>⌁ 여행 영수증</span><strong id="totalCost">₩0</strong></button></div>
+      </section>
+
+      <section class="map-panel" aria-label="여행 동선 지도">
+        <div id="googleMap" class="google-map"></div>
+        <div class="map-toolbar">
+          <span class="map-badge" id="mapDayLabel">DAY 01 · 동선</span>
+          <div class="route-controls">
+            <button type="button" id="previousStop" aria-label="이전 일정">←</button>
+            <span id="routeCounter">0 / 0</span>
+            <button type="button" id="nextStop" aria-label="다음 일정">→</button>
+          </div>
+        </div>
+        <div id="routeLegend" class="route-legend" aria-label="동행별 동선"></div>
+        <article class="place-card" id="placeCard">
+          <div class="place-card-body">
+            <div class="place-card-topline"><span class="place-category" id="placeCategory">일정을 선택하세요</span><span class="place-rating" id="placeRating">Google</span></div>
+            <h2 id="placeName">여행 동선</h2>
+            <p id="placeMemo">일정을 선택하면 장소 정보가 표시됩니다.</p>
+            <div class="place-preview" id="placePreview">
+              <div class="place-preview-empty">장소를 선택하면 사진과 리뷰가 표시됩니다.</div>
+            </div>
+            <div class="place-review-snippet" id="placeReviewSnippet"></div>
+
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="scheduleDialog" class="app-dialog airy-dialog" aria-labelledby="scheduleDialogTitle">
+    <form id="scheduleForm">
+      <header class="dialog-heading"><div><p class="eyebrow" id="scheduleModeLabel">A MOMENT IN YOUR TRIP</p><h2 id="scheduleDialogTitle">새 일정 추가</h2><p class="editor-context" id="editorContext"></p></div><button class="dialog-close" type="button" aria-label="닫기">×</button></header>
+      <input name="itemId" type="hidden"><input name="icon" id="selectedIcon" type="hidden"><input name="memo" id="savedMemo" type="hidden">
+      <div class="airy-fields">
+        <div class="name-section"><label class="airy-label" for="scheduleName">일정 / 장소 이름 <small class="required-tag">필수</small></label><div class="name-input-row"><button type="button" class="icon-add-button" id="openIconPicker" aria-label="아이콘 추가" title="아이콘 추가">＋</button><input id="scheduleName" class="schedule-name" name="name" maxlength="100" placeholder="어떤 순간을 더할까요?" required></div></div>
+        <div class="schedule-datetime"><div><label class="airy-label" for="scheduleDate">날짜 <small class="required-tag">필수</small></label><input id="scheduleDate" name="date" type="date" required></div><div><div class="time-label-row"><label class="airy-label" for="startTime">시작 시간</label><label class="inline-switch"><input id="toggleEndTime" type="checkbox" aria-controls="endTimeFields">종료시간</label></div><div class="time-input-row"><input id="startTime" name="startTime" type="time" aria-label="시작 시간"><div id="endTimeFields" class="end-time-input" hidden><span aria-hidden="true">—</span><input id="endTime" name="endTime" type="time" aria-label="종료 시간" disabled></div></div></div></div>
+        <div class="place-search-field"><label class="airy-label" for="placeSearchInput">Google 지도 장소 <small>선택</small></label><div class="place-search-control"><input id="placeSearchInput" type="search" autocomplete="off" placeholder="장소 검색 또는 구글맵 링크 붙여넣기" aria-controls="placeSearchResults" aria-expanded="false"><button id="clearPlaceButton" type="button" aria-label="장소 선택 해제" hidden>×</button></div><div class="place-search-results" id="placeSearchResults" role="listbox" hidden></div><input name="mapsUrl" id="mapsUrlInput" type="hidden"><small class="field-hint" id="mapsLinkStatus" role="status">장소 없이도 저장할 수 있어요.</small><div id="editorMapWrap" class="editor-map-wrap" hidden><div id="editorMap" aria-label="선택한 장소 지도"></div><div class="editor-place-info"><strong id="editorPlaceName"></strong><span id="editorPlaceAddress"></span><small>Google 지도 연결됨</small></div></div></div>
+        <div class="category-memo-row"><div class="category-picker"><label class="airy-label" id="categoryLabel">카테고리</label><input type="hidden" name="category" id="categorySelect"><button id="categoryDropdown" class="field-button" type="button" aria-labelledby="categoryLabel categoryValue" aria-expanded="false" aria-controls="categoryMenu"><span id="categoryValue">선택 안 함</span><span>⌄</span></button><div id="categoryMenu" class="category-menu" hidden><div id="categoryOptions"></div><button type="button" id="openCategoryManager">⚙ 카테고리 관리</button></div></div><div><span class="airy-label">세부 메모 <small>선택</small></span><button class="field-button memo-add" id="openMemo" type="button"><span id="memoSummary">＋ 세부 메모 추가</span></button></div></div>
+        <section class="attendees-section"><div class="section-label-row"><span class="airy-label">함께하는 사람</span><button class="text-button" id="openAttendees" type="button">참석 인원 변경 ›</button></div><div id="attendeeSummary" class="attendee-summary"></div></section>
+        <section class="settlement-settings"><div class="section-label-row"><span class="airy-label">정산</span><label class="inline-switch"><input id="settlementEnabled" type="checkbox" aria-controls="costFields">설정</label></div><p id="settlementUnset" class="muted-note">미설정</p><div id="costFields" hidden><div class="cost-input-row"><label>총 금액 · 원<input name="cost" type="number" min="0" max="100000000000" step="1" inputmode="numeric" placeholder="금액 입력" disabled></label><label>분담 방식<select name="splitType" id="splitType" disabled><option value="equal">참석자 균등 분담</option><option value="custom">직접 비율 설정</option></select></label></div><div class="ratio-fields" id="ratioFields" hidden></div></div></section>
+      </div>
+      <p class="form-error" id="formError" role="alert"></p><footer class="dialog-submit-row"><button class="button button-danger" id="deleteScheduleButton" type="button" hidden>일정 삭제</button><span class="footer-spacer"></span><button class="button dialog-close-text" type="button">취소</button><button class="button button-primary" id="saveScheduleButton" type="submit">일정 추가</button></footer>
+    </form>
+  </dialog>
+  <dialog id="iconDialog" class="app-dialog small-dialog airy-dialog" aria-labelledby="iconDialogTitle"><header class="dialog-heading"><h2 id="iconDialogTitle">아이콘 추가</h2><button class="dialog-close" type="button" aria-label="닫기">×</button></header><div class="icon-tools"><input id="iconSearch" type="search" aria-label="아이콘 검색" placeholder="카페, 기차, 쇼핑 검색"><select id="iconCategory" aria-label="아이콘 카테고리"></select></div><small class="icon-result-count" id="iconResultCount"></small><div class="icon-grid" id="iconGrid" aria-label="일정 아이콘 선택"></div></dialog>
+  <dialog id="memoDialog" class="app-dialog small-dialog airy-dialog" aria-labelledby="memoDialogTitle"><header class="dialog-heading"><h2 id="memoDialogTitle">세부 메모</h2><button class="dialog-close" type="button" aria-label="닫기">×</button></header><label for="memoEditor" class="airy-label">이 일정에 남길 메모</label><textarea id="memoEditor" maxlength="4000" rows="6" placeholder="만날 위치, 예약번호, 꼭 기억할 것…"></textarea><div class="dialog-submit-row"><button type="button" class="button dialog-close-text">취소</button><button type="button" class="button button-primary" id="saveMemo">메모 저장</button></div></dialog>
+  <dialog id="categoryDialog" class="app-dialog small-dialog airy-dialog" aria-labelledby="categoryDialogTitle"><header class="dialog-heading"><h2 id="categoryDialogTitle">카테고리 관리</h2><button class="dialog-close" type="button" aria-label="닫기">×</button></header><div class="category-chips" id="categoryChips"></div><div class="category-manager"><input id="newCategory" maxlength="20" aria-label="새 카테고리" placeholder="새 카테고리"><button type="button" id="addCategory">추가</button></div></dialog>
+  <dialog id="attendeeDialog" class="app-dialog small-dialog airy-dialog" aria-labelledby="attendeeDialogTitle"><header class="dialog-heading"><h2 id="attendeeDialogTitle">참석 인원 선택</h2><button class="dialog-close" type="button" aria-label="닫기">×</button></header><label class="everyone-option"><input type="checkbox" id="attendEveryone" checked>모두 함께 이동</label><div id="attendeeOptions" class="attendee-options"></div><p id="attendeeError" class="form-error" role="alert"></p><div class="dialog-submit-row"><button type="button" class="button button-primary" id="saveAttendees">선택 완료</button></div></dialog>
+
+  <dialog id="tripDialog" class="app-dialog trip-dialog">
+    <div class="dialog-heading">
+      <div><p class="eyebrow">MY TRIPS</p><h2>내 여행 관리</h2></div>
+      <button class="dialog-close" type="button" aria-label="닫기">×</button>
+    </div>
+    <p class="dialog-description">함께 떠날 여행을 고르고, 여행 정보와 동행을 관리하세요.</p>
+    <div class="trip-manager-layout">
+      <section aria-labelledby="tripListTitle">
+        <div class="trip-list-heading"><h3 id="tripListTitle">여행 목록</h3><button type="button" id="newTripButton">＋ 새 여행</button></div>
+        <div class="trip-list" id="tripList"></div>
+      </section>
+      <form id="tripForm">
+        <input name="tripId" type="hidden">
+        <div class="trip-form-heading"><strong id="tripFormTitle">새 여행 만들기</strong><small id="tripFormRole">일정 없이 시작합니다</small></div>
+        <label>여행 제목 <small class="required-tag">필수</small><input name="title" maxlength="80" placeholder="예: 조금 느리게, 교토" required></label>
+        <label>여행지<input name="destination" maxlength="80" placeholder="예: 교토, 일본"></label>
+        <div class="trip-date-fields"><label>시작일<input name="startDate" type="date" required></label><label>종료일<input name="endDate" type="date" required></label></div>
+        <section class="traveler-manager"><div class="section-label-row"><h3>함께하는 사람 <span id="travelerCount">0명</span></h3><button class="text-button" type="button" id="addTraveler">＋ 인원 추가</button></div><div id="travelerList"></div></section>
+        <p class="form-error" id="tripFormError" role="alert"></p>
+        <div class="dialog-submit-row"><button class="button button-danger" id="deleteTripButton" type="button" hidden>여행 삭제</button><button class="button button-primary" id="saveTripButton" type="submit">저장</button></div>
+      </form>
+    </div>
+  </dialog>
+
+  <dialog id="avatarDialog" class="app-dialog airy-dialog avatar-dialog" aria-labelledby="avatarDialogTitle"><header class="dialog-heading"><h2 id="avatarDialogTitle">나를 닮은 얼굴</h2><button class="dialog-close" type="button" aria-label="닫기">×</button></header><div class="avatar-tabs"><button type="button" data-avatar-group="female" aria-pressed="true">여성 200</button><button type="button" data-avatar-group="male" aria-pressed="false">남성 200</button></div><div id="avatarGrid" class="avatar-grid"></div><div class="avatar-pagination"><button type="button" id="avatarPrevious" aria-label="이전 얼굴">←</button><span id="avatarPage"></span><button type="button" id="avatarNext" aria-label="다음 얼굴">→</button></div><p class="avatar-credit"><a href="https://www.figma.com/community/file/1184595184137881796" target="_blank" rel="noreferrer">Adventurer · Lisa Wischofsky</a> / <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></p></dialog>
+
+  <dialog id="inviteDialog" class="app-dialog small-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">SHARE THE ROUTE</p><h2>친구에게 링크 공유하기</h2></div><button class="dialog-close" type="button" aria-label="닫기">×</button></div>
+    <p class="dialog-description" id="inviteDescription">링크가 있으면 로그인 없이 전체 일정을 볼 수 있습니다. 수정하려면 Google 로그인이 필요합니다.</p>
+    <div class="member-permissions" id="memberPermissions"></div>
+    <button class="button button-primary dialog-submit" type="button" id="copyInvite">공개 열람 링크 복사</button>
+    <p class="copy-status" id="copyStatus" role="status"></p>
+  </dialog>
+
+  <dialog id="settlementDialog" class="app-dialog receipt-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">FAIR SHARE</p><h2>여행 영수증</h2></div><button class="dialog-close" type="button" aria-label="닫기">×</button></div>
+    <div class="paper-receipt" id="receiptContent"></div>
+  </dialog>
+
+  <dialog id="imageDialog" class="image-dialog">
+    <button class="dialog-close image-close" type="button" aria-label="사진 닫기">×</button>
+    <img id="largePhoto" src="./assets/kyoto-gion.png" alt="">
+    <p id="largePhotoCredit"></p>
+  </dialog>
+
+  <dialog id="accountDialog" class="app-dialog small-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">WELCOME</p><h2 id="accountTitle">여행을 함께 기록하세요</h2></div><button class="dialog-close" type="button" aria-label="닫기">×</button></div>
+    <p class="dialog-description" id="accountDescription">Google 계정으로 로그인하면 일정이 저장되고 친구와 실시간으로 함께 편집할 수 있습니다.</p>
+    <button class="google-signin" id="googleSignIn" type="button"><span class="google-g">G</span> Google 계정으로 계속</button>
+    <button class="button dialog-submit" id="signOutButton" type="button" hidden>로그아웃</button>
+    <p class="policy-links"><a href="./privacy.html" target="_blank">개인정보처리방침</a><span>·</span><a href="./terms.html" target="_blank">서비스 이용약관</a></p>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
