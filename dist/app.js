@@ -1,4 +1,4 @@
-import {travelersFor, attendeesFor, allocateCost, parseMapsUrl, isGoogleMapsUrl, personStops} from "./travel-utils.js";
+import {travelersFor, attendeesFor, allocateCost, parseMapsUrl, isGoogleMapsUrl, personStops, authRedirectUrl} from "./travel-utils.js";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/+esm";
 
 const SUPABASE_URL = "https://jiaqobfriamuxtvxhrls.supabase.co";
@@ -1021,7 +1021,7 @@ function scrollToCurrentScheduleOnMobile() {
 async function signInWithGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: location.href, queryParams: { access_type: "offline", prompt: "consent" } }
+    options: { redirectTo: authRedirectUrl(location.href), queryParams: { access_type: "offline", prompt: "consent" } }
   });
   if (error) showToast(error.message);
 }

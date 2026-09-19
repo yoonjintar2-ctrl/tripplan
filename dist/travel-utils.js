@@ -42,3 +42,14 @@ export function parseMapsUrl(value) {
 export function personStops(items, personId) {
   return items.filter(item => item.participant_ids == null || item.participant_ids.includes(personId));
 }
+
+// Return to this deployment, retaining only the app's share-link parameters.
+export function authRedirectUrl(href) {
+  const current = new URL(href);
+  const target = new URL(current.pathname.replace(/index\.html$/, ''), current.origin);
+  for (const key of ['trip', 'invite']) {
+    const value = current.searchParams.get(key);
+    if (value) target.searchParams.set(key, value);
+  }
+  return target.href;
+}
