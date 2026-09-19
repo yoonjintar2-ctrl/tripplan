@@ -31,4 +31,5 @@ Character artwork: Adventurer by Lisa Wischofsky, customized via DiceBear 9.4.3,
 - The existing Google Maps browser key allows `https://yoonjintar2-ctrl.github.io/*` while retaining its API restrictions.
 - `resolve-maps-link` version 3 was deployed with JWT verification and the new GitHub origin.
 - The optional-place and Airy traveler/settlement database migrations were already applied remotely and were not rerun. Match migration names and schema state before applying the bundled SQL.
+- Initial authenticated workspace loading retries transient failures up to three times and coalesces simultaneous sign-in events. Loading and error messages are not reported as successful saves.
 - Mobile keeps a bounded, scrollable agenda above a fixed-height map. Schedule editor content scrolls while the close control stays visible.
