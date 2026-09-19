@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {attendeesFor,allocateCost,parseMapsUrl,isGoogleMapsUrl,personStops} from '../dist/travel-utils.js';
+import {attendeesFor,allocateCost,parseMapsUrl,isGoogleMapsUrl,personStops,authRedirectUrl} from '../dist/travel-utils.js';
 const people=[{id:'a'},{id:'b'},{id:'c'}];
 assert.equal(attendeesFor({participant_ids:null},people).length,3);
 assert.deepEqual(attendeesFor({participant_ids:['b']},people),[{id:'b'}]);
@@ -17,3 +17,8 @@ assert.equal(parseMapsUrl('https://maps.app.goo.gl/example').short,true);
 for(const url of ['javascript:alert(1)','https://google.com.evil.test/maps','https://www.google.com@evil.test/maps','https://www.google.com:444/maps','https://example.com','https://goo.gl/unrelated'])assert.equal(isGoogleMapsUrl(url),false,url);
 assert.throws(()=>parseMapsUrl('https://maps.google.com/?q=100,200'));
 console.log('PASS: attendee splits, rejoining routes, opt-in accounting, exact rounding and Google URL parsing');
+
+assert.equal(authRedirectUrl('https://yoonjintar2-ctrl.github.io/tripplan/?code=used#access_token=old'), 'https://yoonjintar2-ctrl.github.io/tripplan/');
+assert.equal(authRedirectUrl('https://yoonjintar2-ctrl.github.io/tripplan/index.html?trip=one&invite=two&error=old#foo'), 'https://yoonjintar2-ctrl.github.io/tripplan/?trip=one&invite=two');
+assert.equal(authRedirectUrl('https://morrow-trip-planner.yoonjintar0.chatgpt.site/?trip=one'), 'https://morrow-trip-planner.yoonjintar0.chatgpt.site/?trip=one');
+console.log('PASS: OAuth returns to the current deployment and retains shared trips');
