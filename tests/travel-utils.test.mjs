@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {attendeesFor,allocateCost,parseMapsUrl,isGoogleMapsUrl,personStops,authRedirectUrl} from '../dist/travel-utils.js';
+import {attendeesFor,allocateCost,parseMapsUrl,isGoogleMapsUrl,personStops,authRedirectUrl,retryWorkspaceLoad} from '../dist/travel-utils.js';
 const people=[{id:'a'},{id:'b'},{id:'c'}];
 assert.equal(attendeesFor({participant_ids:null},people).length,3);
 assert.deepEqual(attendeesFor({participant_ids:['b']},people),[{id:'b'}]);
@@ -22,3 +22,19 @@ assert.equal(authRedirectUrl('https://yoonjintar2-ctrl.github.io/tripplan/?code=
 assert.equal(authRedirectUrl('https://yoonjintar2-ctrl.github.io/tripplan/index.html?trip=one&invite=two&error=old#foo'), 'https://yoonjintar2-ctrl.github.io/tripplan/?trip=one&invite=two');
 assert.equal(authRedirectUrl('https://morrow-trip-planner.yoonjintar0.chatgpt.site/?trip=one'), 'https://morrow-trip-planner.yoonjintar0.chatgpt.site/?trip=one');
 console.log('PASS: OAuth returns to the current deployment and retains shared trips');
+
+let loadAttempts = 0;
+const waits = [];
+assert.equal(await retryWorkspaceLoad(async () => {
+  if (++loadAttempts < 3) throw new Error('temporary connection failure');
+  return 'saved trips';
+}, async delay => waits.push(delay)), 'saved trips');
+assert.equal(loadAttempts, 3);
+assert.deepEqual(waits, [600, 1800]);
+let failedAttempts = 0;
+await assert.rejects(retryWorkspaceLoad(async () => {
+  failedAttempts++;
+  throw new Error('persistent failure');
+}, async () => {}), /persistent failure/);
+assert.equal(failedAttempts, 3);
+console.log('PASS: workspace load recovers from transient failures and stops after three attempts');
