@@ -8,9 +8,11 @@ The frontend uses Supabase publishable credentials and a browser Google Maps key
 
 ## GitHub Pages
 
+Live site: https://yoonjintar2-ctrl.github.io/tripplan/
+
 The included workflow publishes `dist/` from `main`. In Settings → Pages, select **GitHub Actions** as the source.
 
-When moving to a new origin, add the exact published URL to Supabase Auth's redirect URL allowlist and the origin to the Google Maps browser-key referrer allowlist. Keep existing origins while old shared links are in use. The `resolve-maps-link` Edge Function allows the existing Sites origin and `https://yoonjintar0-commits.github.io`.
+When moving to a new origin, add the exact published URL to Supabase Auth's redirect URL allowlist and the origin to the Google Maps browser-key referrer allowlist. Keep existing origins while old shared links are in use. The `resolve-maps-link` Edge Function allows the existing Sites origin, `https://yoonjintar0-commits.github.io`, and `https://yoonjintar2-ctrl.github.io`.
 
 ## Data and updates
 
@@ -21,3 +23,12 @@ When moving to a new origin, add the exact published URL to Supabase Auth's redi
 - Google returns a limited review selection. The UI displays up to three of those reviews in date order with author attribution, not an exhaustive latest-review feed.
 
 Character artwork: Adventurer by Lisa Wischofsky, customized via DiceBear 9.4.3, CC BY 4.0. See `dist/assets/avatars/ATTRIBUTION.md`.
+
+## Local handoff status (2026-09-19)
+
+- Integrated the supplied Airy source while preserving local workspace metadata and authentication settings.
+- Supabase Auth allows `https://yoonjintar2-ctrl.github.io/tripplan/**`; OAuth uses the current deployment URL and preserves invitation parameters. Existing redirect entries were retained.
+- The existing Google Maps browser key allows `https://yoonjintar2-ctrl.github.io/*` while retaining its API restrictions.
+- `resolve-maps-link` version 3 was deployed with JWT verification and the new GitHub origin.
+- The optional-place and Airy traveler/settlement database migrations were already applied remotely and were not rerun. Match migration names and schema state before applying the bundled SQL.
+- Mobile keeps a bounded, scrollable agenda above a fixed-height map. Schedule editor content scrolls while the close control stays visible.
