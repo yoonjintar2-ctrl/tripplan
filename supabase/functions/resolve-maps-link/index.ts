@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const SITE_ORIGIN = "https://morrow-trip-planner.yoonjintar0.chatgpt.site";
-const ALLOWED_ORIGINS = new Set([SITE_ORIGIN, "https://yoonjintar0-commits.github.io"]);
+const ALLOWED_ORIGINS = new Set([SITE_ORIGIN, "https://yoonjintar0-commits.github.io", "https://yoonjintar2-ctrl.github.io"]);
 const allowedHost = (host: string) => host === "maps.app.goo.gl" || host === "goo.gl" || /^(www\.|maps\.)?google\.(com|co\.kr|co\.jp|co\.uk|com\.au|ca|de|fr|it|es|co\.in|com\.tw|com\.hk|com\.sg)$/i.test(host);
 const allowedUrl = (url: URL) => url.protocol === "https:" && !url.username && !url.password && !url.port && allowedHost(url.hostname) && (url.hostname === "maps.app.goo.gl" || url.pathname.startsWith("/maps") || url.hostname.startsWith("maps.google."));
 const headers = (origin: string | null) => ({
