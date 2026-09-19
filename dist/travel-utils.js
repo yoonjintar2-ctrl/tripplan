@@ -53,3 +53,14 @@ export function authRedirectUrl(href) {
   }
   return target.href;
 }
+
+// OAuth callbacks can arrive before the first authenticated data request settles.
+// Retry loading only; writes made by the editor are never retried here.
+export async function retryWorkspaceLoad(load, wait = ms => new Promise(resolve => setTimeout(resolve, ms))) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await load(); } catch (error) {
+      if (attempt >= 2) throw error;
+      await wait([600, 1800][attempt]);
+    }
+  }
+}

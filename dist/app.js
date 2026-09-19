@@ -1,4 +1,4 @@
-import {travelersFor, attendeesFor, allocateCost, parseMapsUrl, isGoogleMapsUrl, personStops, authRedirectUrl} from "./travel-utils.js";
+import {travelersFor, attendeesFor, allocateCost, parseMapsUrl, isGoogleMapsUrl, personStops, authRedirectUrl, retryWorkspaceLoad} from "./travel-utils.js";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/+esm";
 
 const SUPABASE_URL = "https://jiaqobfriamuxtvxhrls.supabase.co";
@@ -59,6 +59,8 @@ const state = {
   placePreviewRequest: 0,
   placeResolveRequest: 0,
   lastSavedAt: null,
+  syncMessage: "",
+  workspaceLoad: null,
   realtimeChannel: null,
   reloadTimer: null,
   toastTimer: null
@@ -120,18 +122,19 @@ function showToast(message) {
   state.toastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
 }
 function setSync(message) {
-  if (/저장|동기화|연결/.test(message)) state.lastSavedAt = new Date();
+  state.syncMessage = message;
+  if (/^(실시간 저장됨|방금 동기화됨)$/.test(message)) state.lastSavedAt = new Date();
   updateAutoSaveStatus(message);
 }
 function updateAutoSaveStatus(fallback = "") {
   const label = $("#syncStatus");
-  if (state.session && state.lastSavedAt) {
+  if (state.session && state.lastSavedAt && /^(실시간 저장됨|방금 동기화됨|친구들과 실시간 연결됨)$/.test(state.syncMessage)) {
     const minutes = Math.max(0, Math.floor((Date.now() - state.lastSavedAt.getTime()) / 60000));
     label.textContent = `${String(minutes).padStart(2, "0")}분 전 자동 저장됨`;
   } else if (!state.session && new URLSearchParams(location.search).has("trip")) {
     label.textContent = "공개 열람 중 · 로그인 후 수정";
   } else {
-    label.textContent = fallback || "Google 로그인 후 자동 저장";
+    label.textContent = fallback || state.syncMessage || "Google 로그인 후 자동 저장";
   }
 }
 
@@ -1069,17 +1072,28 @@ async function loadPublicSharedTrip() {
   render();
   return true;
 }
+function restoreWorkspace() {
+  // Coalesce repeated SIGNED_IN events while the initial workspace is loading.
+  if (state.workspaceLoad) return state.workspaceLoad;
+  const userId = state.session?.user.id;
+  state.workspaceLoad = retryWorkspaceLoad(async () => {
+    if (!userId || state.session?.user.id !== userId) return;
+    await loadCloudWorkspace();
+  }).catch(error => {
+    if (state.session?.user.id !== userId) return;
+    console.error(`Workspace load failed: ${error.code || "unknown"}: ${error.message || "unknown error"}`);
+    setSync("저장된 여행을 불러오지 못했습니다");
+    showToast("여행을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");
+  }).finally(() => { state.workspaceLoad = null; });
+  return state.workspaceLoad;
+}
 async function initializeAuth() {
   const { data, error } = await supabase.auth.getSession();
   if (error) setSync("로그인 상태를 확인하지 못했습니다");
   state.session = data?.session || null;
   updateAccountUI();
   if (state.session) {
-    try { await loadCloudWorkspace(); } catch (loadError) {
-      console.error(loadError);
-      setSync("저장된 여행을 불러오지 못했습니다");
-      showToast("여행 데이터를 불러오지 못했습니다.");
-    }
+    await restoreWorkspace();
   } else {
     try {
       const shared = await loadPublicSharedTrip();
@@ -1097,7 +1111,7 @@ async function initializeAuth() {
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === "INITIAL_SESSION") return;
     state.session = session;
-    if (session && event === "SIGNED_IN") setTimeout(() => loadCloudWorkspace().catch(error => showToast(error.message)), 0);
+    if (session && event === "SIGNED_IN") setTimeout(() => restoreWorkspace(), 0);
     updateAccountUI();
   });
 }
