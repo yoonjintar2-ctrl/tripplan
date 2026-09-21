@@ -617,6 +617,7 @@ function updatePlaceCard(item) {
   $('#placeCard').classList.toggle('is-search-preview',searchPreview);
   $("#placeCard").hidden = !item;
   state.previewItemId = item?.id || null;
+  $('#placeMore').hidden=!item?.maps_url;
   if (!item) { state.placePreviewRequest++; return; }
   $("#placeCategory").textContent = searchPreview ? "검색한 장소" : `${item.category || "미분류"} · ${formatTime(item.start_time)}`;
   $("#placeName").textContent = item.name;
@@ -992,7 +993,7 @@ async function searchGooglePlaces(rawQuery) {
 
 async function saveTransportMode(itemId,mode){
   if(!canEdit())throw Error('이 여행을 수정할 권한이 없습니다.');
-  if(!['WALKING','DRIVING'].includes(mode))throw Error('지원하지 않는 이동수단입니다.');
+  if(!['WALKING','DRIVING','OTHER'].includes(mode))throw Error('지원하지 않는 이동수단입니다.');
   const tripId=state.trip.id,item=state.items.find(i=>i.id===itemId);
   if(!item)throw Error('일정을 다시 선택해 주세요.');
   if(isGuestTrip()){
@@ -1883,6 +1884,7 @@ async function handleMainMapClick(event) {
   anchorMapPick(event);
   $('#mapPickName').textContent = '장소 확인 중…';
   $('#mapPickAddress').textContent = '';
+  $('#mapPickInfo').textContent = '';
   $('#addMapPlace').disabled = true;
   try {
     const place = await placeFromMapEvent(event);
@@ -1893,6 +1895,7 @@ async function handleMainMapClick(event) {
     $('#mapPickName').textContent = place.displayName || '선택한 위치';
     $('#mapPickAddress').textContent = place.formattedAddress || '';
     $('#addMapPlace').disabled = false;
+    window.PlaceInfo?.preview(place,$('#mapPickInfo')).then(()=>{if(request===mainMapPickRequest)positionMapPick();});
     requestAnimationFrame(positionMapPick);
     const {AdvancedMarkerElement}=await google.maps.importLibrary('marker');
     if(request!==mainMapPickRequest)return;
@@ -1905,6 +1908,10 @@ async function handleMainMapClick(event) {
   }
 }
 $('#dismissMapPick').addEventListener('click', dismissMapPick);
+$('#placeMore').addEventListener('click',()=>{
+ const item=state.mapSearchItem?.id===state.previewItemId?state.mapSearchItem:state.items.find(i=>i.id===state.previewItemId);
+ if(item)window.PlaceInfo?.open(()=>item.place_id?getPlaceDetails(item):Promise.resolve({displayName:item.name,googleMapsURI:item.maps_url,formattedAddress:item.latitude!=null?`${item.latitude}, ${item.longitude}`:''}));
+});
 window.addEventListener('resize',positionMapPick);
 function dismissMapPick() {
   mainMapPickRequest++; state.mapPickedPlace = null; state.mapPickPosition=null; $('#mapPickCard').hidden = true; state.pickMarker && (state.pickMarker.map=null);

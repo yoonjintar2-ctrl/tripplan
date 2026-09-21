@@ -9,8 +9,8 @@ const route=(mode,seconds)=>({mode,seconds,path:[{lat:37,lng:127},{lat:38,lng:12
 let calls=[];let result=await R.choose(a,b,async(_,__,m)=>{calls.push(m);return route('walk',1800)});assert.equal(result.mode,'walk');assert.equal(calls.length,1);
 result=await R.choose(a,b,async(_,__,m)=>m==='WALKING'?route('walk',1801):m==='DRIVING'?route('drive',600):route('subway',500));assert.equal(result.mode,'subway');
 result=await R.choose(a,b,async(_,__,m)=>m==='WALKING'?null:m==='DRIVING'?route('drive',600):route('subway',900));assert.equal(result.mode,'drive');
-result=await R.choose(a,b,async()=>null);assert.equal(result.mode,'jump');assert.equal(result.path.length,0);assert.equal(result.seconds,null);
-result=await R.choose(a,b,async()=>{throw Error('Routes API unavailable')});assert.equal(result.mode,'jump');
+result=await R.choose(a,b,async()=>null);assert.equal(result.mode,'other');assert.equal(result.path.length,2);assert.equal(result.seconds,null);assert.equal(result.parts[0].mode,'walk');assert.equal(result.dashed,true);
+result=await R.choose(a,b,async()=>{throw Error('Routes API unavailable')});assert.equal(result.mode,'other');
 const n=R.normalize({path:[{lat:1,lng:1},{lat:2,lng:2}],durationMillis:60000,legs:[{steps:[{travelMode:'TRANSIT',path:[{lat:1,lng:1},{lat:2,lng:2}],transitDetails:{transitLine:{vehicle:{type:'SUBWAY'}}}}]}]},'TRANSIT');assert.equal(n.mode,'subway');assert.equal(n.parts[0].mode,'subway');assert.equal(n.seconds,60);
 assert.equal(R.samplePath([{lat:0,lng:0},{lat:0,lng:1},{lat:0,lng:3}],.5).lng,1.5);
 const markers=[],polylines=[];
@@ -23,7 +23,7 @@ assert.equal(w.document.querySelector('.map-panel').classList.contains('captain-
 await R.update(map,items,'test',null);draw(1);assert(markers.some(m=>m.map&&m.content.className==='captain-journey'));
 const zig=[{lat:0,lng:0},{lat:.00001,lng:.001},{lat:0,lng:.002}];assert.equal(R.simplify(zig).length,2);
 assert.equal(R.partSegments([{path:zig,mode:'walk'},{path:zig,mode:'walk'}]).length,1);
-assert(R.partSegments([{path:zig,mode:'walk'}])[0].duration<=2200);
+assert(R.partSegments([{path:zig,mode:'walk'}])[0].duration>=3200);
 let saved=[],errors=[],fail=false,saveFail=false;
 w.google.maps.importLibrary=async name=>name==='routes'?{Route:{computeRoutes:async({travelMode})=>({routes:fail?[]:[{path:travelMode==='DRIVING'?[{lat:37,lng:127},{lat:37.5,lng:127},{lat:38,lng:128}]:[{lat:37,lng:127},{lat:38,lng:128}],durationMillis:travelMode==='DRIVING'?600000:2400000}]})}}:{AdvancedMarkerElement:class{constructor(opts){Object.assign(this,opts);markers.push(this);}}};
 const settle=async()=>{for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));};
@@ -32,6 +32,7 @@ const fresh=[{...a,id:'c',longitude:129},{...b,id:'d',longitude:130}];
 await R.update(map,fresh,'toggle','d',opts);
 let badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;
 assert.match(badge.textContent,/차량 10분/);badge.click();await settle();
+assert.equal(saved.at(-1).mode,'OTHER');badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;assert.equal(badge.textContent,'기타 이동수단');assert(polylines.some(p=>p.map&&p.icons));draw(1);assert.equal(markers.filter(m=>m.map&&m.content.className==='captain-journey').at(-1).content.dataset.mode,'walk');badge.click();await settle();
 assert.equal(saved.at(-1).mode,'WALKING');assert.equal(saved.at(-1).id,'d');
 badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;assert.match(badge.textContent,/도보 40분/);
 draw(1);assert.equal(markers.filter(m=>m.map&&m.content.className==='captain-journey').at(-1).content.dataset.mode,'walk');
@@ -39,6 +40,5 @@ badge.click();await settle();assert.equal(saved.at(-1).mode,'DRIVING');draw(2);a
 const count=saved.length;saveFail=true;badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;badge.click();await settle();assert.equal(saved.length,count);assert.match(badge.textContent,/차량/);assert.equal(errors.at(-1),'save failed');saveFail=false;
 await R.update(map,[fresh[0],{...fresh[1],transport_mode:'WALKING'}],'reload','d',opts);assert.match(markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content.textContent,/도보 40분/);
 let fits=0;map.fitBounds=()=>{fits++};await R.update(map,[fresh[0]],'flight','c',{firstDay:true});draw(3);const flight=markers.filter(m=>m.map&&m.content.className==='captain-journey').at(-1);assert.equal(flight.position.lng,129);assert.equal(flight.content.dataset.mode,'flight');assert.match(flight.content.style.transform,/-180/);assert.equal(fits,0);
-console.log('PASS: mode toggle, forced long walk, save failure, preference reload, compact path, faster motion and local plane arrival');
-console.log('PASS: 30-minute walking threshold, subway versus car, unavailable routes jump without time/line, transit steps and distance interpolation');
+console.log('PASS: walk/drive/other cycle, dotted walking fallback, no fictitious duration, preference persistence, slower walk and local plane arrival');
 })().catch(e=>{console.error(e);process.exitCode=1});
