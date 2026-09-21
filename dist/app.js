@@ -1,3 +1,4 @@
+import {clockParts,tripPhase,currentSchedule} from './trip-clock.js';
 import {travelersFor, attendeesFor, allocateCost, parseMapsUrl, isGoogleMapsUrl, personStops, authRedirectUrl, retryWorkspaceLoad} from "./travel-utils.js";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/+esm";
 
@@ -27,6 +28,7 @@ function blankTrip() {
 }
 
 const state = {
+  followClock: true, clockTrip: null, clockMinute: null,
   session: null,
   trip: blankTrip(),
   trips: [],
@@ -186,6 +188,7 @@ function renderTripSwitcher() {
 }
 
 function render() {
+  syncTripClock();
   const dates = dateRange(state.trip.start_date, state.trip.end_date);
   if (!dates.includes(state.activeDate)) state.activeDate = dates[0];
   const items = activeItems();
@@ -198,6 +201,7 @@ function render() {
     return `<button class="day-tab ${date === state.activeDate ? "active" : ""}" type="button" role="tab" aria-selected="${date === state.activeDate}" data-date="${date}"><span>DAY ${String(index + 1).padStart(2, "0")}</span><strong>${value.getMonth() + 1}월 ${String(value.getDate()).padStart(2, "0")}일 ${new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(value).replace("요일", "")}</strong></button>`;
   }).join("");
   $$("[data-date]").forEach(button => button.addEventListener("click", () => {
+    state.followClock=false;
     state.activeDate = button.dataset.date;
     state.selectedId = null;
     render();
@@ -218,6 +222,7 @@ function render() {
     const item = state.items.find(value => value.id === button.dataset.editItem);
     openSchedule(item);
   }));
+  renderTripClock(items);
   updatePlaceCard(selected);
   renderMap();
   renderMembers();
@@ -225,14 +230,26 @@ function render() {
   updateAccountUI();
 }
 
-function isCurrentItem(item, items) {
-  const today = new Date();
-  const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  if (item.item_date !== dateString) return false;
-  const now = `${String(today.getHours()).padStart(2, "0")}:${String(today.getMinutes()).padStart(2, "0")}`;
-  const current = [...items].reverse().find(candidate => formatTime(candidate.start_time) <= now) || items[0];
-  return current?.id === item.id;
+function syncTripClock(now=new Date()) {
+  if(state.clockTrip!==state.trip.id){state.clockTrip=state.trip.id;state.followClock=true;}
+  if(tripPhase(state.trip,now).mode==='live'&&state.followClock){state.activeDate=clockParts(now).date;state.selectedId=currentSchedule(activeItems(),now)?.item.id||null;}
 }
+function isCurrentItem(item,items){return currentSchedule(items)?.item.id===item.id;}
+function renderTripClock(items,now=new Date()) {
+  const phase=tripPhase(state.trip,now),clock=clockParts(now),current=currentSchedule(items,now),live=phase.mode==='live';
+  document.body.classList.toggle('trip-on-air',live);
+  $('#captainCountdown').textContent=phase.mode==='upcoming'?`D-${phase.remaining}`:live?'ON AIR':phase.mode==='ended'?'여행 완료':'';
+  $('#captainMessage').textContent=phase.mode==='upcoming'?`출발까지 ${phase.remaining}일 남았어요!`:live?`여행 ${phase.day}일차, 지금 함께하고 있어요!`:phase.mode==='ended'?'함께한 여행, 즐거우셨나요?':'이번 여행도 함께 짜볼까요?';
+  $('#captainCountdown').hidden=phase.mode==='empty';
+  const follow=$('#followCurrentSchedule');follow.hidden=!live;follow.setAttribute('aria-pressed',String(state.followClock));follow.textContent=state.followClock?'● 실시간 따라가기':'현재 일정으로';
+  follow.title='기기 날짜·시간 기준. 다른 일정 선택 시 따라가기가 잠시 해제됩니다.';
+  const list=$('#agendaList');list.classList.toggle('is-timeline',items.length>0);
+  $$('.agenda-item',list).forEach((el,index)=>{el.classList.toggle('is-past',items[index].item_date<clock.date||(items[index].item_date===clock.date&&items[index].start_time&&items[index].start_time.slice(0,5)<clock.time&&items[index].id!==current?.item.id));if(items[index].id===current?.item.id){const bar=document.createElement('span');bar.className='schedule-progress';bar.style.width=`${current.progress*100}%`;bar.setAttribute('aria-hidden','true');el.append(bar);}});
+  if(live&&state.activeDate===clock.date){const line=document.createElement('div');line.className='schedule-now';line.textContent=`${clock.time} NOW · ${current?'지금 이 일정':'다음 일정을 기다리는 중'}`;const target=current?[...list.querySelectorAll("[data-item-id]")].find(el=>el.dataset.itemId===current.item.id)?.closest('.agenda-item'):[...list.querySelectorAll('.agenda-item')].find((el,index)=>items[index].start_time?.slice(0,5)>clock.time);list.insertBefore(line,target||null);}
+}
+$('#followCurrentSchedule').addEventListener('click',()=>{state.followClock=!state.followClock;render();if(state.followClock){const item=selectedItem();if(item)panMapToItem(item,false);requestAnimationFrame(()=>$('.agenda-item.is-current')?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'}));}});
+function tickTripClock(){const key=clockParts().date+' '+clockParts().time;if(key===state.clockMinute||document.hidden)return;state.clockMinute=key;const before=state.selectedId;render();if(state.followClock&&state.selectedId!==before&&selectedItem())panMapToItem(selectedItem(),false);}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)tickTripClock();});
 function updatePlaceCard(item) {
   const items = activeItems();
   const index = item ? items.findIndex(value => value.id === item.id) : -1;
@@ -314,6 +331,7 @@ async function initMap() {
   }
 }
 function markerContent(item, selected = false) {
+  if (window.CaptainMap) return CaptainMap.markerContent(item, selected, activeItems().findIndex(value=>value.id===item.id)+1);
   const node = document.createElement("div");
   node.className = `route-marker ${selected ? "selected" : ""}`;
   node.innerHTML = `<span>${activeItems().findIndex(value => value.id === item.id) + 1}</span>`;
@@ -327,7 +345,8 @@ async function renderMap() {
   state.markers.forEach(marker=>{marker.map=null;});state.markers.clear();
   state.routes.forEach(route=>route.setMap(null));state.routes=[];
   const items=activeItems().filter(itemPosition), allItems=activeItems(true), allPeople=travelers();
-  items.forEach(item=>{const marker=new AdvancedMarkerElement({map:state.map,position:itemPosition(item),title:item.name,content:markerContent(item,item.id===state.selectedId),gmpClickable:true});marker.addEventListener('gmp-click',()=>selectStop(item.id,true));state.markers.set(item.id,marker);});
+  window.CaptainMap?.setRoute(state.map,items,state.trip.id+":"+state.activeDate+":"+state.travelerFilter);
+  items.forEach(item=>{const marker=new AdvancedMarkerElement({map:state.map,position:itemPosition(item),title:item.name,content:markerContent(item,item.id===state.selectedId),zIndex:item.id===state.selectedId?220:50,gmpClickable:true});marker.addEventListener('gmp-click',()=>selectStop(item.id,true));state.markers.set(item.id,marker);});
   const colors=['#292929','#707070','#a24a43','#596c70','#867c69','#8b6666'];
   const people=allPeople.filter(person=>state.travelerFilter==='all'||state.travelerFilter===person.id);
   const routeGroups=new Map();
@@ -377,6 +396,7 @@ async function panMapToItem(item, animate = true) {
   if ((state.map.getZoom() || 0) < 14) state.map.setZoom(14);
 }
 function selectStop(id, animate = false) {
+  state.followClock=false;
   state.selectedId = id;
   render();
   const item = selectedItem();
@@ -884,7 +904,7 @@ async function saveTrip(event) {
   const startDate = String(data.get("startDate") || "");
   const endDate = String(data.get("endDate") || "");
   const errorNode = $("#tripFormError");
-  const roster=state.draftTravelers.map(person=>({...person,nickname:person.nickname.trim()}));
+  const roster=state.draftTravelers.map(person=>({...person,nickname:person.nickname.trim(),...(window.CaptainStudio?{appearance:CaptainStudio.clean(person.appearance)}:{})}));
   if (!roster.length || roster.some(person=>!person.nickname)) {errorNode.textContent="여행 인원의 닉네임을 모두 입력해 주세요.";return;}
   errorNode.textContent = "";
   if (!title) return void (errorNode.textContent = "여행 제목을 입력해 주세요.");
@@ -967,16 +987,9 @@ function updateAccountUI() {
 }
 
 function scrollToCurrentScheduleOnMobile() {
-  if (!matchMedia("(max-width: 850px)").matches) return;
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  if (!dateRange(state.trip.start_date, state.trip.end_date).includes(today)) return;
-  state.activeDate = today;
-  const clock = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const items = activeItems();
-  state.selectedId = [...items].reverse().find(item => formatTime(item.start_time) <= clock)?.id || items[0]?.id || null;
-  render();
-  requestAnimationFrame(() => $(".agenda-item.is-current, .agenda-item.is-selected")?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" }));
+  if(!matchMedia('(max-width: 850px)').matches||!state.followClock)return;
+  syncTripClock();render();
+  requestAnimationFrame(()=>$('.agenda-item.is-current')?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'}));
 }
 
 async function signInWithGoogle() {
@@ -1076,16 +1089,30 @@ async function initializeAuth() {
 
 function travelers(){return travelersFor(state.trip,state.members);}
 function avatarUrl(person){const key=/^(male|female)-(00[1-9]|0[1-9]\d|1\d\d|200)$/.test(person.avatar || '') ? person.avatar : 'male-001';return `./assets/avatars-clay/${key}.webp`;}
-function faceHtml(person,alt=person.nickname){return `<img class="traveler-face" src="${avatarUrl(person)}" alt="${safe(alt)}" width="38" height="38">`;}
+function faceHtml(person,alt=person.nickname){const data={avatar:person.avatar,appearance:person.appearance};return `<img class="traveler-face" src="${window.CaptainStudio?.sourceFor(person)||avatarUrl(person)}" data-traveler-look="${safe(JSON.stringify(data))}" alt="${safe(alt)}" width="38" height="38">`;}
 function renderTravelerFilter(){const select=$("#travelerFilter");const people=travelers();if(!people.some(p=>p.id===state.travelerFilter))state.travelerFilter='all';select.innerHTML='<option value="all">모두 보기</option>'+people.map(person=>`<option value="${safe(person.id)}">${safe(person.nickname)}</option>`).join('');select.value=state.travelerFilter;}
 function renderAttendeeSummary(){const people=attendeesFor({participant_ids:state.participantIds},travelers());$("#attendeeSummary").innerHTML=`<div class="face-stack">${people.slice(0,4).map(person=>faceHtml(person)).join('')}</div><div><strong>${people.length}명 ${state.participantIds == null ? '모두 함께' : '함께'}</strong><small>${people.map(person=>safe(person.nickname)).join(' · ')}</small></div><span class="attendee-badge">${state.participantIds == null ? '전원 참석' : '개별 일정'}</span>`;}
 function openAttendees(){const people=travelers();$("#attendEveryone").checked=state.participantIds==null;$("#attendeeOptions").innerHTML=people.map(person=>`<label class="attendee-choice">${faceHtml(person,'')}<span>${safe(person.nickname)}</span><input type="checkbox" value="${safe(person.id)}" ${state.participantIds==null || state.participantIds.includes(person.id) ? 'checked' : ''}></label>`).join('');$("#attendeeError").textContent='';$$("input",$("#attendeeOptions")).forEach(input=>input.addEventListener('change',()=>{$("#attendEveryone").checked=false;}));$("#attendeeDialog").showModal();}
-function renderDraftTravelers(){const editable=state.rosterEditable;$("#travelerCount").textContent=`${state.draftTravelers.length}명`;$("#addTraveler").hidden=!editable;$("#travelerList").innerHTML=state.draftTravelers.map(person=>`<div class="traveler-row"><button type="button" class="traveler-avatar-button" data-change-avatar="${safe(person.id)}" aria-label="${safe(person.nickname || '여행자')} 얼굴 선택" ${editable?'':'disabled'}><img src="${avatarUrl(person)}" alt="선택한 캐릭터" width="44" height="44"></button><input data-nickname="${safe(person.id)}" aria-label="여행 인원 닉네임" value="${safe(person.nickname)}" placeholder="닉네임" maxlength="40" ${editable?'':'disabled'}><button type="button" class="remove-traveler" data-remove-traveler="${safe(person.id)}" aria-label="${safe(person.nickname || '여행자')} 인원 삭제" ${editable?'':'disabled'}>×</button></div>`).join('');
+function renderDraftTravelers(){const editable=state.rosterEditable;$("#travelerCount").textContent=`${state.draftTravelers.length}명`;$("#addTraveler").hidden=!editable;$("#travelerList").innerHTML=state.draftTravelers.map(person=>`<div class="traveler-row"><button type="button" class="traveler-avatar-button" data-change-avatar="${safe(person.id)}" aria-label="${safe(person.nickname || '여행자')} 얼굴 선택" ${editable?'':'disabled'}>${faceHtml(person,'선택한 캐릭터')}</button><input data-nickname="${safe(person.id)}" aria-label="여행 인원 닉네임" value="${safe(person.nickname)}" placeholder="닉네임" maxlength="40" ${editable?'':'disabled'}><button type="button" class="remove-traveler" data-remove-traveler="${safe(person.id)}" aria-label="${safe(person.nickname || '여행자')} 인원 삭제" ${editable?'':'disabled'}>×</button></div>`).join('');
   $$('[data-nickname]').forEach(input=>input.addEventListener('input',()=>{state.draftTravelers.find(p=>p.id===input.dataset.nickname).nickname=input.value;}));
-  $$('[data-change-avatar]').forEach(button=>button.addEventListener('click',()=>{state.avatarPerson=button.dataset.changeAvatar;const person=state.draftTravelers.find(p=>p.id===state.avatarPerson);state.avatarGroup=person.avatar?.startsWith('female')?'female':'male';state.avatarPage=Math.floor((Number(person.avatar?.split('-')[1] || 1)-1)/25);renderAvatarGrid();$("#avatarDialog").showModal();}));
+  $$('[data-change-avatar]').forEach(button=>button.addEventListener('click',()=>{state.avatarPerson=button.dataset.changeAvatar;const person=state.draftTravelers.find(p=>p.id===state.avatarPerson);state.avatarGroup=person.avatar?.startsWith('female')?'female':'male';state.avatarPage=person.appearance?.variant?8:Math.floor((Number(person.avatar?.split('-')[1] || 1)-1)/25);renderAvatarGrid();$("#avatarDialog").showModal();}));
   $$('[data-remove-traveler]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.removeTraveler;if(state.draftTravelers.length<=1)return showToast('여행 인원은 한 명 이상 필요합니다.');const used=state.items.some(item=>item.participant_ids?.includes(id) || Object.hasOwn(item.split_ratios || {},id));if(used)return showToast('이 인원이 지정된 일정의 참석·정산 설정을 먼저 변경해 주세요.');state.draftTravelers=state.draftTravelers.filter(p=>p.id!==id);renderDraftTravelers();}));
 }
-function renderAvatarGrid(){const group=state.avatarGroup || 'female',page=state.avatarPage || 0,person=state.draftTravelers.find(p=>p.id===state.avatarPerson);$$('[data-avatar-group]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.avatarGroup===group)));$("#avatarGrid").innerHTML=Array.from({length:25},(_,index)=>{const number=page*25+index+1,key=`${group}-${String(number).padStart(3,'0')}`;return `<button type="button" class="avatar-option" data-avatar="${key}" aria-label="${group==='male'?'남성':'여성'} 캐릭터 ${number}" aria-pressed="${person?.avatar===key}"><img src="./assets/avatars-clay/${key}.webp" alt="" width="70" height="70"></button>`;}).join('');$("#avatarPage").textContent=`${page+1} / 8`;$("#avatarPrevious").disabled=page===0;$("#avatarNext").disabled=page===7;$$('[data-avatar]').forEach(button=>button.addEventListener('click',()=>{if(person)person.avatar=button.dataset.avatar;renderDraftTravelers();$("#avatarDialog").close();}));}
+function editAvatarLook(selection=null){
+  const person=state.draftTravelers.find(p=>p.id===state.avatarPerson);if(!person)return;
+  if(!window.CaptainStudio)return showToast('꾸미기 화면을 불러오는 중입니다. 잠시 후 다시 눌러주세요.');
+  CaptainStudio.open(selection||person,value=>{person.avatar=value.avatar;person.appearance=value.appearance;renderDraftTravelers();$('#avatarDialog').close();});
+}
+function renderAvatarGrid(){
+  const group=state.avatarGroup||'female',page=Math.max(0,Math.min(8,state.avatarPage||0)),person=state.draftTravelers.find(p=>p.id===state.avatarPerson);
+  $$('[data-avatar-group]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.avatarGroup===group)));
+  $('#avatarGrid').innerHTML=Array.from({length:25},(_,index)=>{const number=(page===8?0:page*25)+index+1,key=`${page===8?'extra-':''}${group}-${String(number).padStart(3,'0')}`;const src=page===8?`./assets/studio/${key}.webp`:`./assets/avatars-clay/${key}.webp?v=3`;return `<button type="button" class="avatar-option" data-avatar="${key}" aria-label="${group==='male'?'남성':'여성'} ${page===8?'새 헤어':'캐릭터'} ${number}" aria-pressed="${(person?.appearance?.variant||person?.avatar)===key}"><img src="${src}" alt="" width="70" height="70"></button>`;}).join('');
+  $('#avatarPage').textContent=`${page+1} / 9${page===8?' · 새 헤어':''}`;$('#avatarPrevious').disabled=page===0;$('#avatarNext').disabled=page===8;
+  $$('[data-avatar]').forEach(button=>button.addEventListener('click',()=>{if(!person)return;const key=button.dataset.avatar;const selection={...person,appearance:window.CaptainStudio?.clean(person.appearance)||{}};if(key.startsWith('extra-')){selection.avatar=`${group}-001`;selection.appearance.variant=key;}else{selection.avatar=key;delete selection.appearance.variant;}editAvatarLook(selection);}));
+}
+$('#editCurrentLook').addEventListener('click',()=>editAvatarLook());
+$('#showNewHair').addEventListener('click',()=>{state.avatarPage=8;renderAvatarGrid();});
+
 async function resolvePastedMapsLink(query,requestId){let parsed=parseMapsUrl(query);if(parsed.short){const {data,error}=await supabase.functions.invoke('resolve-maps-link',{body:{url:parsed.url}});if(error || data?.error)throw new Error(data?.error || '짧은 링크를 확인하지 못했습니다. Google 지도에서 주소창의 전체 링크를 복사해 주세요.');parsed=parseMapsUrl(data.url);}if(requestId!==state.placeResolveRequest)return;
   if(parsed.placeId){await loadGoogleMaps();const {Place}=await google.maps.importLibrary('places');const place=new Place({id:parsed.placeId});await place.fetchFields({fields:['id','displayName','formattedAddress','location','googleMapsURI']});if(requestId===state.placeResolveRequest)selectGooglePlace(place);return;}
   if(parsed.name){const places=await findGooglePlaces(parsed.name,parsed.bias);if(requestId!==state.placeResolveRequest)return;if(places.length){showPlaceResults(places);await renderEditorMap(null,places);$('#mapsLinkStatus').textContent='링크의 장소를 찾았습니다. 목록 또는 지도 핀에서 선택해 주세요.';return;}}
@@ -1239,12 +1266,43 @@ async function handleEditorMapClick(event) {
   }
 }
 let mainMapPickRequest = 0;
+function positionMapPick() {
+  const card=$('#mapPickCard');if(card.hidden)return;
+  const panel=$('.map-panel'),bounds=panel.getBoundingClientRect();
+  let point=state.mapPickPixel;
+  if(state.mapPickPosition&&state.mapPickOverlay?.getProjection()) {
+    const projected=state.mapPickOverlay.getProjection().fromLatLngToContainerPixel(state.mapPickPosition);
+    if(projected)point=projected;
+  }
+  if(!point)point={x:bounds.width/2,y:bounds.height/2};
+  const width=card.offsetWidth||218,height=card.offsetHeight||116,padding=10;
+  const right=point.x+16+width<=bounds.width-padding;
+  const x=Math.max(padding,Math.min(bounds.width-width-padding,right?point.x+16:point.x-width-16));
+  const y=Math.max(52,Math.min(bounds.height-height-34,point.y-height*.35));
+  card.style.left=x+'px';card.style.top=y+'px';card.style.right='auto';
+  card.dataset.side=right?'right':'left';
+  card.style.setProperty('--pick-arrow-y',Math.max(14,Math.min(height-14,point.y-y))+'px');
+}
+function anchorMapPick(event) {
+  state.mapPickPosition=event.latLng||null;
+  const bounds=$('.map-panel').getBoundingClientRect(),dom=event.domEvent;
+  state.mapPickPixel=dom&&Number.isFinite(dom.clientX)?{x:dom.clientX-bounds.left,y:dom.clientY-bounds.top}:null;
+  if(!state.mapPickOverlay&&google.maps.OverlayView) {
+    class PickProjection extends google.maps.OverlayView {
+      onAdd(){} draw(){positionMapPick();} onRemove(){}
+    }
+    state.mapPickOverlay=new PickProjection();state.mapPickOverlay.setMap(state.map);
+  }
+  positionMapPick();
+}
 async function handleMainMapClick(event) {
   event.stop?.();
   const request = ++mainMapPickRequest;
   const tripId = state.trip.id;
   state.mapPickedPlace = null;
+  if(state.pickMarker){state.pickMarker.map=null;state.pickMarker=null;}
   $('#mapPickCard').hidden = false;
+  anchorMapPick(event);
   $('#mapPickName').textContent = '장소 확인 중…';
   $('#mapPickAddress').textContent = '';
   $('#addMapPlace').disabled = true;
@@ -1252,16 +1310,26 @@ async function handleMainMapClick(event) {
     const place = await placeFromMapEvent(event);
     if (request !== mainMapPickRequest || tripId !== state.trip.id || !place) return;
     state.mapPickedPlace = place;
+    state.mapPickPosition = place.location;
+    positionMapPick();
     $('#mapPickName').textContent = place.displayName;
     $('#mapPickAddress').textContent = place.formattedAddress || '';
     $('#addMapPlace').disabled = false;
+    requestAnimationFrame(positionMapPick);
+    const {AdvancedMarkerElement}=await google.maps.importLibrary('marker');
+    if(request!==mainMapPickRequest)return;
+    if(state.pickMarker)state.pickMarker.map=null;
+    const dot=document.createElement('div');dot.className='picked-location-dot';
+    dot.innerHTML='<span class="captain-radar"><i></i><i></i></span><b></b>';
+    state.pickMarker=new AdvancedMarkerElement({map:state.map,position:place.location,content:dot,title:'선택한 위치',zIndex:230});
   } catch (error) {
     if (request === mainMapPickRequest) { $('#mapPickCard').hidden = true; showToast(error.message || '장소를 확인하지 못했습니다.'); }
   }
 }
 $('#dismissMapPick').addEventListener('click', dismissMapPick);
+window.addEventListener('resize',positionMapPick);
 function dismissMapPick() {
-  mainMapPickRequest++; state.mapPickedPlace = null; $('#mapPickCard').hidden = true;
+  mainMapPickRequest++; state.mapPickedPlace = null; state.mapPickPosition=null; $('#mapPickCard').hidden = true; state.pickMarker && (state.pickMarker.map=null);
 }
 $('#addMapPlace').addEventListener('click', () => {
   const place = state.mapPickedPlace;
@@ -1331,7 +1399,7 @@ $("#saveAttendees").addEventListener("click",()=>{const selected=$$("input:check
 $("#addTraveler").addEventListener("click",()=>{if(state.draftTravelers.length>=100)return showToast("최대 100명까지 추가할 수 있습니다.");state.draftTravelers.push({id:crypto.randomUUID(),nickname:"",avatar:`female-${String(state.draftTravelers.length%200+1).padStart(3,'0')}`});renderDraftTravelers();$$("[data-nickname]").at(-1)?.focus();});
 $$('[data-avatar-group]').forEach(button=>button.addEventListener('click',()=>{state.avatarGroup=button.dataset.avatarGroup;state.avatarPage=0;renderAvatarGrid();}));
 $("#avatarPrevious").addEventListener("click",()=>{state.avatarPage=Math.max(0,state.avatarPage-1);renderAvatarGrid();});
-$("#avatarNext").addEventListener("click",()=>{state.avatarPage=Math.min(7,state.avatarPage+1);renderAvatarGrid();});
+$("#avatarNext").addEventListener("click",()=>{state.avatarPage=Math.min(8,state.avatarPage+1);renderAvatarGrid();});
 $("#travelerFilter").addEventListener("change",event=>{state.travelerFilter=event.target.value;state.selectedId=null;render();});
 $("#placeSearchInput").addEventListener("keydown",event=>{if(event.key==='Enter'){event.preventDefault();clearTimeout(placeSearchTimer);searchGooglePlaces(event.target.value);}if(event.key==='Escape'){$("#placeSearchResults").hidden=true;event.stopPropagation();}});
 $("#scheduleDialog").addEventListener("close",()=>{state.placeResolveRequest++;state.editorMapRequest++;clearTimeout(placeSearchTimer);clearEditorMarkers();closeCategoryMenu();});
@@ -1341,3 +1409,4 @@ render();
 Promise.allSettled([initMap(), initializeAuth()]);
 setTimeout(scrollToCurrentScheduleOnMobile, 500);
 setInterval(updateAutoSaveStatus, 60000);
+setInterval(tickTripClock, 15000);

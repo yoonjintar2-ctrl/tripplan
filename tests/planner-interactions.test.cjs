@@ -17,7 +17,8 @@ w.google={maps:{importLibrary:async name=>({Map:FakeMap,AdvancedMarkerElement:Ma
 w.createClient=()=>({from(table){const obj={select(){return this},single(){return this},eq(){return this},order(){return this},in(){return this},insert(row){calls.writes.push({table,row});return this},update(row){calls.writes.push({table,row});return this},then(resolve){return Promise.resolve({data:{id:'saved'},error:null}).then(resolve)}};return obj},rpc:async(name,args)=>{calls.rpc.push({name,args});return {data:null,error:null}},auth:{},functions:{}});
 let utils=fs.readFileSync(root+'/dist/travel-utils.js','utf8').replace(/export /g,'');
 let code=fs.readFileSync(root+'/dist/app.js','utf8').replace(/^import .*;\n/gm,'').replace('Promise.allSettled([initMap(), initializeAuth()]);','');
-vm.runInContext(utils+'\n'+code,c);
+const clock=fs.readFileSync(root+'/dist/trip-clock.js','utf8').replace(/export /g,'');
+vm.runInContext(utils+'\n'+clock+'\n'+code,c);
 const run=s=>vm.runInContext(s,c),el=s=>w.document.querySelector(s),tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{
 run(`state.session={user:{id:'owner',user_metadata:{full_name:'나'}}};state.trip={id:'trip',owner_id:'owner',title:'영국',destination:'London',start_date:'2026-10-12',end_date:'2026-10-16',categories:['관광'],travelers:[{id:'owner',nickname:'나',avatar:'male-001'}]};state.trips=[state.trip];state.activeDate='2026-10-12';state.items=[{id:'one',trip_id:'trip',item_date:'2026-10-12',start_time:'09:00',name:'장소 A',latitude:51.5,longitude:-.1,icon:'OLD',split_ratios:{}},{id:'two',trip_id:'trip',item_date:'2026-10-12',start_time:'11:00',name:'장소 B',latitude:51.51,longitude:-.12,split_ratios:{}}];`);
@@ -51,7 +52,23 @@ run('openSchedule();toggleEndTime(true);setTimeFields("start","15:00");setTimeFi
 run('resetTripForm(state.trip);switchTrip=async()=>{}');el('#tripForm [name="title"]').value='영국 수정';await run('saveTrip({preventDefault(){},currentTarget:document.querySelector("#tripForm")})');assert.equal(calls.rpc.at(-1).args.p_destination,'London');
 console.log('PASS: optional-location save, time validation, and existing destination preservation.');
 const manifest=JSON.parse(fs.readFileSync(root+'/dist/assets/avatars-clay/manifest.json'));assert.equal(manifest.count,400);assert.equal(new Set(manifest.keys).size,400);for(const key of manifest.keys)assert(fs.existsSync(root+'/dist/assets/avatars-clay/'+key+'.webp'));
-run('state.draftTravelers=[{id:"owner",nickname:"나",avatar:"male-001"}];state.avatarPerson="owner";state.avatarGroup="female";state.avatarPage=7;renderAvatarGrid()');assert.equal(w.document.querySelectorAll('#avatarGrid button').length,25);assert(el('[data-avatar="female-200"]'));assert(el('[data-avatar="female-200"] img').src.endsWith('avatars-clay/female-200.webp'));
+run('state.draftTravelers=[{id:"owner",nickname:"나",avatar:"male-001"}];state.avatarPerson="owner";state.avatarGroup="female";state.avatarPage=7;renderAvatarGrid()');assert.equal(w.document.querySelectorAll('#avatarGrid button').length,25);assert(el('[data-avatar="female-200"]'));assert(new URL(el('[data-avatar="female-200"] img').src).pathname.endsWith('avatars-clay/female-200.webp'));
 console.log('PASS: 400 unique avatar assets and page 8 mapping.');
-dom.window.close();
+// Apply a look through the same callback as the picker, then persist the roster JSON.
+vm.runInContext(fs.readFileSync(root+'/dist/avatar-studio.js','utf8'),c);
+w.CaptainStudio.open=(person,apply)=>{calls.look={person,apply};};
+run('resetTripForm(state.trip);state.avatarPerson="owner";state.avatarGroup="female";state.avatarPage=8;renderAvatarGrid()');
+assert.equal(w.document.querySelectorAll('#avatarGrid button').length,25);el('[data-avatar="extra-female-001"]').click();assert.equal(calls.look.person.appearance.variant,'extra-female-001');assert.equal(calls.look.person.avatar,'female-001');
+calls.look.apply({avatar:'female-001',appearance:{variant:'extra-female-001',hair:'white',glasses:'gold-glasses',hat:'beret',adjustments:{}}});
+await run('saveTrip({preventDefault(){},currentTarget:document.querySelector("#tripForm")})');const appearance=calls.rpc.at(-1).args.p_travelers[0].appearance;assert.equal(appearance.hair,'white');assert.equal(appearance.variant,'extra-female-001');assert.equal(appearance.glasses,'gold-glasses');assert.equal(appearance.hat,'beret');
+// The popup follows its click and flips to remain within the map panel.
+el('.map-panel').getBoundingClientRect=()=>({left:0,top:0,width:800,height:600});
+run('state.mapPickPosition=null;state.mapPickPixel={x:200,y:300};document.querySelector("#mapPickCard").hidden=false;positionMapPick()');assert.equal(el('#mapPickCard').style.left,'216px');assert.equal(el('#mapPickCard').dataset.side,'right');
+run('state.mapPickPixel={x:790,y:300};positionMapPick()');assert.equal(el('#mapPickCard').dataset.side,'left');assert(parseFloat(el('#mapPickCard').style.left)+218<=790);
+// Today's clock selects the active stop, respects manual browsing, and resumes.
+run(`state.trip.start_date=todayString();state.trip.end_date=todayString();state.activeDate=todayString();state.clockTrip=null;state.items=[{id:'now',item_date:todayString(),start_time:'00:00',end_time:'23:59:59',name:'현재 일정'},{id:'later',item_date:todayString(),name:'자유 일정'}];render()`);
+assert.equal(run('state.selectedId'),'now');assert(w.document.body.classList.contains('trip-on-air'));assert.equal(el('#captainCountdown').textContent,'ON AIR');assert(el('.schedule-now'));
+run('selectStop("later");tickTripClock()');assert.equal(run('state.selectedId'),'later');assert.equal(run('state.followClock'),false);el('#followCurrentSchedule').click();assert.equal(run('state.selectedId'),'now');
+console.log('PASS: appearance selection and save payload, anchored popup, ON AIR timeline and manual-follow controls.');
+await tick();await tick();dom.window.close();
 })().catch(e=>{console.error(e);dom.window.close();process.exitCode=1});

@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {clockParts,tripPhase,currentSchedule} from '../dist/trip-clock.js';
+const trip={id:'trip',start_date:'2026-09-21',end_date:'2026-09-23'},at=(d,h=12,m=0)=>new Date(2026,8,d,h,m);
+assert.deepEqual(tripPhase(trip,at(19)),{mode:'upcoming',remaining:2});
+assert.deepEqual(tripPhase(trip,at(21,0)),{mode:'live',day:1});
+assert.deepEqual(tripPhase(trip,at(23,23,59)),{mode:'live',day:3});
+assert.equal(tripPhase(trip,at(24,0)).mode,'ended');assert.equal(tripPhase({id:null},at(21)).mode,'empty');
+const items=[{id:'a',item_date:'2026-09-21',start_time:'09:00',end_time:'10:00'},{id:'b',item_date:'2026-09-21',start_time:'11:00'},{id:'c',item_date:'2026-09-21',start_time:'12:00'},{id:'untimed',item_date:'2026-09-21'}];
+assert.equal(currentSchedule(items,at(21,8)),null);assert.equal(currentSchedule(items,at(21,9)).item.id,'a');assert.equal(currentSchedule(items,at(21,9,30)).progress,.5);assert.equal(currentSchedule(items,at(21,10)),null);assert.equal(currentSchedule(items,at(21,11,59)).item.id,'b');assert.equal(currentSchedule(items,at(21,12)).item.id,'c');assert.equal(currentSchedule(items,at(21,13)),null);assert.equal(currentSchedule(items,at(22,9)),null);
+assert.equal(clockParts(at(21,0,3)).time,'00:03');
+console.log('PASS: countdown, inclusive trip dates, current-time boundaries, gaps and untimed schedules');

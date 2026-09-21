@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "count": 400,
   "style": "Captain Beer inspired matte 3D clay, consistent warm peach ivory skin",
   "constraints": {
@@ -420,5 +420,6 @@
     "female-198",
     "female-199",
     "female-200"
-  ]
+  ],
+  "description": "400 neutral clay avatars with dark hair and plain white tops"
 }

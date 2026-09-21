@@ -42,6 +42,18 @@ Time fields open an hour/minute picker. Itinerary icons and the trip destination
 
 The main map offers “이 장소로 일정 추가” on POI/point selection. The editor shows numbered search results on a map and accepts POI or coordinate selection. Place details can collapse/expand on PC and mobile. Map interactions use Google's supported POI click events: https://developers.google.com/maps/documentation/javascript/examples/event-poi
 
-Run `npm ci && npm test` for the utility and DOM interaction suites. The interaction suite mocks Google Maps and Supabase and does not write user data. GitHub Pages runs both suites before deployment.
+Run `npm ci && npm test` for the utility and DOM interaction suites. The interaction suite mocks Google Maps and Supabase and does not write user data. The current GitHub Pages workflow runs the dependency-free utility suite before deployment; run `npm test` locally for all suites.
 
 `examples/uk-parents-5days.json` contains a 25-item, London-based 4-night/5-day sample with breaks and 3 travelers. Dates are illustrative (2026-10-12–16), times are local to London, and no bookings or payments are implied. The requested account received this example separately; the JSON contains no account credentials or private account IDs.
+
+## Avatar studio and live trip clock (2026-09-21)
+
+The picker now includes the original 400 white-outfit portraits plus 50 hairstyles (hime, hush, butterfly, bob, pixie, bald, buzz, crew, drop and crop). Choose a face, then combine 21 wearables across seven categories and select original/yellow/brown/white hair. Canvas composition uses face/eye/neck anchors and a hair mask; optional position/size adjustments are saved with the look. `travelers[].appearance` is stored by the existing settings RPC, with stable base avatar IDs and optional `extra-*` variant IDs. No database migration is required.
+
+Map selection uses a small coordinate-anchored popup with edge clamping. Captain flags mark stops; the selected flag and clicked point show expanding rings. Captain walks along the displayed straight route in itinerary order and pauses to read a map or use a telescope. The small decorative map frame, route animation and rings respect reduced-motion preferences and the pause control.
+
+Captain shows calendar-day D-minus before departure, red ON AIR throughout the trip dates, and a completed message afterward. The date and time use the viewer's device clock, matching the existing time fields. During a trip, the current date and schedule are selected automatically on load and at minute changes (checked every 15 seconds). Manual date/stop selection pauses following; “현재 일정으로” resumes. Explicit end times are respected, including gaps. Without an end time, an item lasts until the next timed item, or one hour for the final item. Untimed items are not marked current.
+
+The timeline displays the current time, active stop and elapsed fraction. `examples/seoul-on-air.json` is the account-free copy of the six-stop example created for 2026-09-21. Its broad time windows are for previewing ON AIR; edit the dates/times to try it on another day.
+
+Validation: `npm test` covers time boundaries, clock modes, manual-follow behavior, appearance persistence, popup positioning, asset IDs and route order, with Maps/Supabase mocks. Avatar composites were rendered with the production composer. The managed browser could not open the local preview URL, so live Google Maps rendering and deployed mobile layout still need verification after upload.
