@@ -149,3 +149,35 @@ input[type=date]{cursor:pointer}
  #placeCard .place-thumb img{width:100%}.trip-manager-tabs button{font-size:11px;padding:9px 5px}
  .app-dialog{max-height:calc(var(--visible-height,100dvh) - 24px);overflow:auto}
 }
+
+/* v21: intrinsic row heights; dialogs cannot render when closed. */
+dialog:not([open]){display:none!important}
+#routeLegend{display:none!important}
+.schedule-required-hint{margin:0;padding:10px 12px;background:#f0f6f3;color:#315b4c;font-size:12px;line-height:1.6;border-radius:8px}
+#scheduleDialog .airy-label{color:#737b80;font-weight:500}
+#scheduleDialog label[for=scheduleName],#scheduleDialog label[for=scheduleDate]{color:#263e35;font-weight:700}
+#scheduleDialog .required-tag{background:#dceee4;color:#28583d;font-weight:700}
+#scheduleDialog #scheduleName,#scheduleDialog #scheduleDate{border-color:#739887;background:#fcfffd}
+#scheduleDialog .airy-label small:not(.required-tag){font-weight:400;color:#858c91}
+@media(max-width:850px){
+ .agenda-list{display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;gap:5px}
+ .agenda-list>.agenda-item,.agenda-list>.schedule-now{flex:0 0 auto}
+ .agenda-item{align-items:stretch;grid-template-rows:minmax(40px,auto);height:auto;min-height:40px;box-sizing:border-box}
+ .agenda-select{display:flex;align-items:center;justify-content:flex-start;box-sizing:border-box;min-height:40px;height:40px;padding:0 9px;line-height:20px}
+ .agenda-copy{display:block;min-width:0;width:100%}.agenda-copy strong{display:block;line-height:20px;margin:0}.agenda-copy strong>span{line-height:20px}
+ .agenda-expand,.agenda-edit-button{display:flex;align-items:center;justify-content:center;align-self:stretch;height:40px;min-height:40px;padding:0;line-height:1;box-sizing:border-box}
+ #dayTabs{flex:0 0 34px;height:34px;min-height:34px;max-height:34px;align-items:center;box-sizing:border-box;scroll-snap-type:x proximity}
+ #dayTabs .day-tab{height:32px;min-height:32px;max-height:32px;flex:0 0 auto;box-sizing:border-box;scroll-snap-align:start;color:#626970;background:#fafafa}
+ #dayTabs .day-tab strong{color:#333}#dayTabs .day-tab.active{background:#313b38;color:white}#dayTabs .day-tab.active strong{color:white}.trip-on-air #dayTabs .day-tab.active{background:#b32538}
+ .agenda-list.is-empty{overflow:hidden;justify-content:center;border:0;margin-left:0;padding:0}
+ .agenda-list.is-empty .captain-empty{display:grid;grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto;align-content:center;align-items:center;gap:2px 8px;min-height:0;height:auto;padding:6px 8px;margin:0;box-sizing:border-box}
+ .agenda-list.is-empty .captain-empty img{width:32px;height:40px;object-fit:contain;grid-row:1/3;margin:0}
+ .agenda-list.is-empty .captain-empty strong{font-size:12px;line-height:16px;margin:0}.agenda-list.is-empty .captain-empty p{font-size:10px;line-height:14px;margin:0}.agenda-list.is-empty .captain-empty p br{display:none}
+ #tripDialog[open]{display:flex;flex-direction:column;height:calc(var(--visible-height,100dvh) - 24px);max-height:calc(var(--visible-height,100dvh) - 24px);overflow:hidden;margin:auto;box-sizing:border-box}
+ #tripDialog>.dialog-heading,#tripDialog>.dialog-description,#tripDialog>.trip-manager-tabs{flex:0 0 auto}
+ #tripDialog .trip-manager-layout{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+ #tripDialog #travelerList{max-height:190px;overflow:auto;overscroll-behavior:contain}
+ #lookDialog[open],#avatarDialog[open]{max-height:calc(var(--visible-height,100dvh) - 24px);overflow:auto;box-sizing:border-box}
+ #lookDialog .dialog-heading,#avatarDialog .dialog-heading{position:sticky;top:0;background:white;z-index:2}
+ #lookDialog .look-footer{position:sticky;bottom:0;background:white}
+}

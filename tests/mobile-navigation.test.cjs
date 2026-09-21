@@ -32,6 +32,7 @@ assert.equal(run('state.trip.id'),id);assert.equal(run('state.selectedId'),'b');
 run(`state.guestBook.records.push({trip:{...state.trip,id:'other',title:'다른 여행'},items:[]});writeGuestBook();loadGuestRecord('other');loadGuestRecord('${id}');`);
 assert.equal(run('state.selectedId'),'b');run('state.guestBook=null;initializeGuest()');assert.equal(run('state.trip.id'),id);
 run('openTripManager()');assert.equal(el('#tripDialog').dataset.panel,'list');el('[data-trip-panel=details]').click();assert.equal(el('#tripDialog').dataset.panel,'details');el('[data-trip-panel=list]').click();assert.equal(el('#tripDialog').dataset.panel,'list');
+const activeBefore=w.document.activeElement;el('#addTraveler').click();assert.equal(w.document.activeElement,activeBefore,'adding traveler must not summon keyboard');el('#avatarDialog').showModal();el('#avatarDialog .dialog-close').click();assert.equal(el('#avatarDialog').open,false);assert.equal(el('#lookDialog').open,false);el('#lookDialog').showModal();el('#lookDialog .dialog-close').click();assert.equal(el('#lookDialog').open,false);
 el('#tripDialog').close();el('#mobileAddScheduleButton').click();assert(el('#scheduleDialog').open);
 let alerts=[];w.alert=message=>alerts.push(message);el('#scheduleDate').value='2099-10-04';el('#scheduleDate').dispatchEvent(new w.Event('change'));
 assert.match(alerts[0],/여행관리/);const count=run('state.items.length');el('#scheduleName').value='기간 밖 일정';

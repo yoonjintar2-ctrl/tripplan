@@ -59,7 +59,7 @@ console.log('PASS: 400 unique avatar assets and page 8 mapping.');
 vm.runInContext(fs.readFileSync(root+'/dist/avatar-studio.js','utf8'),c);
 w.CaptainStudio.open=(person,apply)=>{calls.look={person,apply};};
 run('resetTripForm(state.trip);state.avatarPerson="owner";state.avatarGroup="female";state.avatarPage=8;renderAvatarGrid()');
-assert.equal(w.document.querySelectorAll('#avatarGrid button').length,25);el('[data-avatar="extra-female-001"]').click();assert.equal(calls.look.person.appearance.variant,'extra-female-001');assert.equal(calls.look.person.avatar,'female-001');
+assert.equal(w.document.querySelectorAll('#avatarGrid button').length,25);el('[data-avatar="extra-female-001"]').click();assert.equal(calls.look,undefined,'face selection must not open hair dialog');el('#editCurrentLook').click();assert.equal(calls.look.person.appearance.variant,'extra-female-001');assert.equal(calls.look.person.avatar,'female-001');
 calls.look.apply({avatar:'female-001',appearance:{variant:'extra-female-001',hair:'white',glasses:'gold-glasses',hat:'beret',adjustments:{}}});
 await run('saveTrip({preventDefault(){},currentTarget:document.querySelector("#tripForm")})');const appearance=calls.rpc.at(-1).args.p_travelers[0].appearance;assert.equal(appearance.hair,'white');assert.equal(appearance.variant,'extra-female-001');assert.equal(appearance.glasses,undefined);assert.equal(appearance.hat,undefined);
 // The popup follows its click and flips to remain within the map panel.

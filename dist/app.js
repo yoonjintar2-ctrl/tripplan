@@ -538,6 +538,7 @@ function render() {
   const dates = dateRange(state.trip.start_date, state.trip.end_date);
   if (!dates.includes(state.activeDate)) state.activeDate = dates[0];
   const items = activeItems();
+  $("#agendaList").classList.toggle("is-empty",items.length===0);
   if (state.selectedId && !items.some(item => item.id === state.selectedId)) state.selectedId = null;
   if(state.mobileExpandedId!==state.selectedId)state.mobileExpandedId=null;
   const selected = selectedItem();
@@ -547,6 +548,8 @@ function render() {
     const value = parseLocalDate(date);
     return `<button class="day-tab ${date === state.activeDate ? "active" : ""}" type="button" role="tab" aria-selected="${date === state.activeDate}" data-date="${date}"><span>DAY ${String(index + 1).padStart(2, "0")}</span><strong>${value.getMonth() + 1}월 ${String(value.getDate()).padStart(2, "0")}일 ${new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(value).replace("요일", "")}</strong></button>`;
   }).join("");
+  $("#dayTabs").scrollTop=0;
+  if(state.renderedTabsTrip!==state.trip.id){$("#dayTabs").scrollLeft=0;state.renderedTabsTrip=state.trip.id;}
   $$("[data-date]").forEach(button => button.addEventListener("click", () => {
     state.activeDate = button.dataset.date;
     state.selectedId = null;
@@ -578,6 +581,7 @@ function render() {
   renderTripSwitcher();
   updateAccountUI();
   persistView();
+  const tabs=$("#dayTabs");tabs.scrollLeft=Math.min(tabs.scrollLeft,Math.max(0,tabs.scrollWidth-tabs.clientWidth));
 }
 
 function syncTripClock(now=new Date()) {
@@ -1596,6 +1600,7 @@ function renderDraftTravelers(){const editable=state.rosterEditable;$("#traveler
 function editAvatarLook(selection=null){
   const person=state.draftTravelers.find(p=>p.id===state.avatarPerson);if(!person)return;
   if(!window.CaptainStudio)return showToast('머리색 선택 화면을 불러오는 중입니다. 잠시 후 다시 눌러주세요.');
+  $('#avatarDialog').close();
   CaptainStudio.open(selection||person,value=>{person.avatar=value.avatar;person.appearance=value.appearance;renderDraftTravelers();$('#avatarDialog').close();});
 }
 function renderAvatarGrid(){
@@ -1603,7 +1608,7 @@ function renderAvatarGrid(){
   $$('[data-avatar-group]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.avatarGroup===group)));
   $('#avatarGrid').innerHTML=Array.from({length:25},(_,index)=>{const number=(page===8?0:page*25)+index+1,key=`${page===8?'extra-':''}${group}-${String(number).padStart(3,'0')}`;const src=page===8?`./assets/studio/${key}.webp`:`./assets/avatars-clay/${key}.webp?v=3`;return `<button type="button" class="avatar-option" data-avatar="${key}" aria-label="${group==='male'?'남성':'여성'} ${page===8?'새 헤어':'캐릭터'} ${number}" aria-pressed="${(person?.appearance?.variant||person?.avatar)===key}"><img src="${src}" alt="" width="70" height="70"></button>`;}).join('');
   $('#avatarPage').textContent=`${page+1} / 9${page===8?' · 새 헤어':''}`;$('#avatarPrevious').disabled=page===0;$('#avatarNext').disabled=page===8;
-  $$('[data-avatar]').forEach(button=>button.addEventListener('click',()=>{if(!person)return;const key=button.dataset.avatar;const selection={...person,appearance:window.CaptainStudio?.clean(person.appearance)||{}};if(key.startsWith('extra-')){selection.avatar=`${group}-001`;selection.appearance.variant=key;}else{selection.avatar=key;delete selection.appearance.variant;}editAvatarLook(selection);}));
+  $$('[data-avatar]').forEach(button=>button.addEventListener('click',()=>{if(!person)return;const key=button.dataset.avatar;const selection={...person,appearance:window.CaptainStudio?.clean(person.appearance)||{}};if(key.startsWith('extra-')){selection.avatar=`${group}-001`;selection.appearance.variant=key;}else{selection.avatar=key;delete selection.appearance.variant;}person.avatar=selection.avatar;person.appearance=selection.appearance;renderDraftTravelers();$("#avatarDialog").close();}));
 }
 $('#editCurrentLook').addEventListener('click',()=>editAvatarLook());
 $('#showNewHair').addEventListener('click',()=>{state.avatarPage=8;renderAvatarGrid();});
@@ -1898,7 +1903,7 @@ function openNamedDialog(id) {
   document.getElementById(id).showModal();
 }
 $$("[data-open-dialog]").forEach(button => button.addEventListener("click", () => openNamedDialog(button.dataset.openDialog)));
-$$(".dialog-close, .dialog-close-text").forEach(button => button.addEventListener("click", () => button.closest("dialog").close()));
+$$(".dialog-close, .dialog-close-text").forEach(button => button.addEventListener("click", event => {event.preventDefault();event.stopPropagation();button.closest("dialog").close();}));
 $$("dialog").forEach(dialog => dialog.addEventListener("click", event => {
   if (event.target !== dialog) return;
   const box = dialog.getBoundingClientRect();
@@ -1957,7 +1962,7 @@ $("#openCategoryManager").addEventListener("click",()=>{closeCategoryMenu();$("#
 $("#openAttendees").addEventListener("click",openAttendees);
 $("#attendEveryone").addEventListener("change",event=>{if(event.target.checked)$$("input",$("#attendeeOptions")).forEach(input=>{input.checked=true;});});
 $("#saveAttendees").addEventListener("click",()=>{const selected=$$("input:checked",$("#attendeeOptions")).map(input=>input.value);if(!selected.length){$("#attendeeError").textContent="한 명 이상 선택해 주세요.";return;}state.participantIds=$("#attendEveryone").checked?null:selected;renderAttendeeSummary();renderRatioFields();toggleSettlement($("#settlementEnabled").checked);$("#attendeeDialog").close();});
-$("#addTraveler").addEventListener("click",()=>{if(state.draftTravelers.length>=100)return showToast("최대 100명까지 추가할 수 있습니다.");state.draftTravelers.push({id:newLocalId(),nickname:"",avatar:`female-${String(state.draftTravelers.length%200+1).padStart(3,'0')}`});renderDraftTravelers();$$("[data-nickname]").at(-1)?.focus();});
+$("#addTraveler").addEventListener("click",()=>{if(state.draftTravelers.length>=100)return showToast("최대 100명까지 추가할 수 있습니다.");state.draftTravelers.push({id:newLocalId(),nickname:"",avatar:`female-${String(state.draftTravelers.length%200+1).padStart(3,'0')}`});renderDraftTravelers();});
 $$('[data-avatar-group]').forEach(button=>button.addEventListener('click',()=>{state.avatarGroup=button.dataset.avatarGroup;state.avatarPage=0;renderAvatarGrid();}));
 $("#avatarPrevious").addEventListener("click",()=>{state.avatarPage=Math.max(0,state.avatarPage-1);renderAvatarGrid();});
 $("#avatarNext").addEventListener("click",()=>{state.avatarPage=Math.min(8,state.avatarPage+1);renderAvatarGrid();});
