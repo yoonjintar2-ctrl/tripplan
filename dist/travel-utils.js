@@ -64,3 +64,11 @@ export async function retryWorkspaceLoad(load, wait = ms => new Promise(resolve 
     }
   }
 }
+
+// Preserve relative trip days. Overflow on a shorter trip stays on the last day.
+export function shiftScheduleDates(items,oldStart,newStart,newEnd){
+  const day=value=>Date.parse(value+'T00:00:00Z');
+  const offset=day(newStart)-day(oldStart),start=day(newStart),end=day(newEnd);
+  if(!Number.isFinite(offset) || !Number.isFinite(end) || end<start)throw new Error('여행 날짜를 확인해 주세요.');
+  return items.map(item=>({...item,item_date:new Date(Math.min(end,Math.max(start,day(item.item_date)+offset))).toISOString().slice(0,10)}));
+}

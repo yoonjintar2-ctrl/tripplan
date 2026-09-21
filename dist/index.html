@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./airy.css">
   <link rel="stylesheet" href="./captain.css">
-  <link rel="stylesheet" href="./studio.css?v=13">
+  <link rel="stylesheet" href="./studio.css?v=16">
 </head>
 <body>
   <div class="app-shell">
@@ -27,6 +27,7 @@
       <a class="brand" href="#" aria-label="여행계획닷컴 홈"><img class="brand-logo" src="./assets/captain/logo.png" width="42" height="42" alt=""><span>여행계획닷컴</span><sup>beta</sup></a>
       <div class="header-actions">
         <p class="autosave-status" id="syncStatus">여행을 불러오는 중</p>
+        <button id="manualSaveButton" class="manual-save-button" type="button" hidden>저장</button>
         <div class="member-stack" id="memberStack" aria-label="여행 구성원" hidden></div>
         <button class="profile-button" type="button" aria-label="계정 메뉴" data-open-dialog="accountDialog">
           <span class="google-g">G</span>
@@ -44,7 +45,7 @@
             <button type="button" id="manageTripsButton">여행 관리</button>
           </div>
         </div>
-        <div class="captain-welcome"><img src="./assets/captain/guide-flag.webp" alt="" width="30" height="36"><strong id="captainCountdown" hidden></strong><p id="captainMessage">이번 여행도 함께 짜볼까요?</p></div>
+        <div class="captain-welcome"><img src="./assets/captain/guide-flag.webp" alt="" width="30" height="36"><strong id="captainCountdown" hidden></strong><p id="captainMessage">이번 여행도 함께 짜볼까요?</p><button id="mobileAddScheduleButton" type="button">＋ 일정 추가</button></div>
         <aside id="guestNotice" class="guest-notice" hidden><p id="guestNoticeText"></p><button id="guestSaveButton" type="button">Google 로그인하고 계획 유지</button></aside><button id="guestFormRecovery" class="guest-recovery" type="button" hidden>입력하던 내용 다시 열기</button>
         <div class="day-tabs" id="dayTabs" role="tablist" aria-label="여행 날짜"></div>
 
@@ -60,7 +61,10 @@
         <div class="map-viewport">
         <div id="googleMap" class="google-map"></div>
         <div class="map-toolbar">
-          <span class="map-badge" id="mapDayLabel">DAY 01 · 동선</span>
+          <section id="mapSearch" class="map-search" aria-label="지도 장소 검색">
+            <button id="toggleMapSearch" type="button" aria-label="장소 검색 열기" aria-expanded="false" aria-controls="mapSearchPanel"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="2"/></svg></button>
+            <div id="mapSearchPanel"><form id="mapSearchForm" role="search"><input id="mapSearchInput" type="search" aria-label="지도에서 장소 검색" placeholder="어디로 떠날까요? 장소 검색" autocomplete="off" maxlength="200"><button type="submit">검색</button><button id="closeMapSearch" type="button" aria-label="검색 닫기">×</button></form><div id="mapSearchStatus" role="status"></div><div id="mapSearchResults" aria-label="장소 검색 결과" hidden></div></div>
+          </section>
           <div class="route-controls">
             <button type="button" id="previousStop" aria-label="이전 일정">←</button>
             <span id="routeCounter">0 / 0</span>
@@ -76,7 +80,7 @@
           <div class="place-card-body">
             <div class="place-title-row"><h2 id="placeName">여행 동선</h2><button id="togglePlaceCard" type="button" aria-expanded="true" aria-controls="placeCardDetails">접기 ⌄</button></div>
             <div class="place-card-topline"><span class="place-category" id="placeCategory">일정을 선택하세요</span><span class="place-rating" id="placeRating">Google</span></div>
-            <div id="placeCardDetails">
+            <div id="mapSearchPlaceActions" hidden><button id="addSearchPlace" type="button">＋ 일정에 추가</button><button id="closeSearchPlace" type="button" aria-label="검색한 장소 정보 닫기">닫기</button></div><div id="placeCardDetails">
             <p id="placeMemo">일정을 선택하면 장소 정보가 표시됩니다.</p>
             <div class="place-preview" id="placePreview">
               <div class="place-preview-empty">장소를 선택하면 사진과 리뷰가 표시됩니다.</div>
@@ -124,8 +128,8 @@
       <button class="dialog-close" type="button" aria-label="닫기">×</button>
     </div>
     <p class="dialog-description">함께 떠날 여행을 고르고, 여행 정보와 동행을 관리하세요.</p>
-    <div class="trip-manager-layout">
-      <section aria-labelledby="tripListTitle">
+    <div class="trip-manager-tabs" role="tablist" aria-label="여행관리 화면"><button type="button" role="tab" data-trip-panel="list" aria-controls="tripListPanel" aria-selected="true">여행 목록</button><button type="button" role="tab" data-trip-panel="details" aria-controls="tripForm" aria-selected="false">여행 정보</button></div><div class="trip-manager-layout">
+      <section id="tripListPanel" aria-labelledby="tripListTitle">
         <div class="trip-list-heading"><h3 id="tripListTitle">여행 목록</h3><button type="button" id="newTripButton">＋ 새 여행</button></div>
         <div class="trip-list" id="tripList"></div>
       </section>
@@ -135,6 +139,7 @@
         <label>여행 제목 <small class="required-tag">필수</small><input name="title" maxlength="80" placeholder="예: 조금 느리게, 교토" required></label>
         <div class="trip-date-fields"><label>시작일<input name="startDate" type="date" required></label><label>종료일<input name="endDate" type="date" required></label></div>
         <section class="traveler-manager"><div class="section-label-row"><h3>함께하는 사람 <span id="travelerCount">0명</span></h3><button class="text-button" type="button" id="addTraveler">＋ 인원 추가</button></div><div id="travelerList"></div></section>
+        <p class="trip-date-note">기간을 바꿔도 일정은 유지됩니다. 기간을 줄이면 넘치는 일정은 마지막 날로 이동합니다.</p><section class="trip-accounts-section"><h3>참여 계정 및 수정 권한</h3><div id="tripAccounts"></div></section>
         <p class="form-error" id="tripFormError" role="alert"></p>
         <div class="dialog-submit-row"><button class="button button-danger" id="deleteTripButton" type="button" hidden>여행 삭제</button><button class="button button-primary" id="saveTripButton" type="submit">저장</button></div>
       </form>
@@ -181,6 +186,6 @@
   <script src="./avatar-landmarks.js?v=4" defer></script>
   <script src="./avatar-studio.js?v=5" defer></script>
   <script src="./captain-map.js?v=5" defer></script>
-  <script type="module" src="./app.js?v=16"></script>
+  <script type="module" src="./app.js?v=19"></script>
 </body>
 </html>
