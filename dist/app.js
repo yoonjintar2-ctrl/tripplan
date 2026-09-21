@@ -6,7 +6,7 @@ const SUPABASE_URL = "https://jiaqobfriamuxtvxhrls.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_OQ50_TYVty0yFuVVrbe7kA_Kn9uZ5bR";
 const GOOGLE_MAPS_KEY = "AIzaSyDXMAandzVKkP0uutdEZ2Qdn7jTs0MCBvw";
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { flowType: "pkce", persistSession: true, detectSessionInUrl: true }
+  auth: { flowType: "pkce", persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
 
 const $ = (selector, parent = document) => parent.querySelector(selector);
@@ -53,6 +53,131 @@ const state = {
   toastTimer: null
 };
 
+// Guest plans live locally until an explicit Google-login handoff.
+let guestStore;
+function isGuestTrip(trip=state.trip){return Boolean(state.guestMode && state.guestBook?.records.some(record=>record.trip.id===trip?.id));}
+function guestHasWork(){return Boolean(state.guestBook?.dirty);}
+function guestWritable(){return isGuestTrip() && !state.session && !state.guestBook.pending?.userId && !state.guestConflict;}
+function writeGuestBook(){
+  try{state.guestBook=guestStore.write(state.guestBook);state.guestStorageError='';return true;}
+  catch(error){state.guestStorageError=error.message || '브라우저에 임시 저장할 공간이 없습니다.';if(/다른 탭/.test(state.guestStorageError))state.guestConflict=true;return false;}
+}
+function refreshGuestNotice(){
+  const notice=$('#guestNotice');if(!notice)return;
+  notice.hidden=!(state.guestMode || guestHasWork());
+  $('#guestNoticeText').textContent=state.guestStorageError || (state.session && guestHasWork()?'계정 저장이 아직 완료되지 않았습니다. 임시 계획은 보관 중이에요. 다시 저장해 주세요.':'로그인하지 않은 계획은 브라우저 데이터 삭제·다른 기기 이동 시 사라질 수 있어요. 계획을 유지하려면 Google 로그인해 주세요.');
+  $('#guestSaveButton').textContent=state.session?'계정에 저장 다시 시도':'Google 로그인하고 계획 유지';
+  $('#guestSaveButton').disabled=Boolean(state.guestImporting);
+  $('#guestBackupButton').hidden=!state.guestStorageError;
+  $('#guestFormRecovery').hidden=!(state.guestBook?.editor && !state.guestRestoring);
+  window.removeEventListener('beforeunload',guestBeforeUnload);
+  if(guestHasWork())window.addEventListener('beforeunload',guestBeforeUnload);
+}
+function commitGuest(){
+  if(!isGuestTrip() || state.session)return;
+  const record=state.guestBook.records.find(value=>value.trip.id===state.trip.id);
+  record.trip=GuestDrafts.clone(state.trip);record.items=GuestDrafts.clone(state.items);
+  state.guestBook.activeId=state.trip.id;state.guestBook.dirty=true;
+  state.trips=state.guestBook.records.map(value=>({...value.trip,_role:'owner'}));
+  writeGuestBook();setSync(state.guestStorageError?'임시 저장 실패 · 백업 필요':'이 브라우저에 임시 보관 중');refreshGuestNotice();
+}
+function loadGuestRecord(id){
+  const record=state.guestBook.records.find(value=>value.trip.id===id);if(!record)return;
+  state.guestMode=true;state.trip=GuestDrafts.clone(record.trip);state.items=GuestDrafts.clone(record.items);state.members=[];
+  state.trips=state.guestBook.records.map(value=>({...value.trip,_role:'owner'}));state.activeDate=state.trip.start_date;state.selectedId=null;
+  state.guestBook.activeId=id;render();refreshGuestNotice();
+}
+function initializeGuest(){
+  try{
+    guestStore ||= new GuestDrafts.Store(localStorage);state.guestBook=guestStore.read();
+    if(state.guestBook.importedFor){state.guestBook={...state.guestBook,records:[],activeId:null,dirty:false,editor:null,pending:null,importedFor:null};}
+    // A canceled OAuth attempt without any cloud writes can still be edited.
+    if(state.guestBook.pending && !state.guestBook.pending.userId)state.guestBook.pending=null;
+    state.guestMode=true;
+    if(!state.guestBook.records.length){
+      const trip={...blankTrip(),id:crypto.randomUUID(),title:'나의 여행 계획',travelers:[{id:crypto.randomUUID(),nickname:'나',avatar:'male-001'}]};
+      state.guestBook.records.push({trip,items:[]});state.guestBook.activeId=trip.id;
+    }
+    loadGuestRecord(state.guestBook.activeId || state.guestBook.records[0].trip.id);
+    setSync(guestHasWork()?'이 브라우저에 임시 보관 중':'로그인 없이 계획을 시작해 보세요');restoreGuestEditor();refreshGuestNotice();
+  }catch(error){state.guestStorageError=error.message;showToast(error.message);setSync('임시 계획을 읽지 못했습니다');}
+}
+function captureGuestEditor(){
+  if(!state.guestBook || state.guestImporting || state.guestRestoring || (!state.guestMode && !state.guestRecovery))return;
+  const id=$('#scheduleDialog').open?'schedule':$('#tripDialog').open?'trip':null;if(!id)return;
+  const form=$(`#${id}Form`),fields={};
+  for(const input of form.elements){if((input.name||input.id) && !['button','submit'].includes(input.type))fields[input.name||input.id]={value:input.value,checked:input.checked};}
+  if($('#memoDialog').open && fields.memo)fields.memo.value=$('#memoEditor').value;
+  const pending=state.pendingPlace?{...state.pendingPlace}:null;
+  // The selected place already uses plain scalar coordinates; no Google objects are persisted.
+  state.guestBook.editor={kind:id,tripId:state.trip.id,fields,pendingPlace:pending,participantIds:state.participantIds,draftTravelers:state.draftTravelers};
+  if(state.guestMode)state.guestBook.dirty=true;
+  writeGuestBook();refreshGuestNotice();
+}
+function clearGuestEditor(kind){
+  if(state.guestBook?.editor?.kind!==kind || state.guestRestoring || state.guestOAuthLeaving)return;
+  state.guestBook.editor=null;state.guestRecovery=false;writeGuestBook();refreshGuestNotice();
+}
+function restoreGuestEditor(){
+  const editor=state.guestBook?.editor;if(!editor || state.guestRestoring)return;
+  if(editor.tripId!==state.trip.id)return;
+  state.guestRestoring=true;
+  try{
+    if(editor.kind==='schedule'){
+      openSchedule(state.items.find(item=>item.id===editor.fields.itemId?.value)||null);
+      state.pendingPlace=editor.pendingPlace;state.participantIds=editor.participantIds;renderRatioFields();
+    }else{openTripManager();state.draftTravelers=editor.draftTravelers||[];renderDraftTravelers();}
+    const form=$(`#${editor.kind}Form`);
+    for(const [name,value] of Object.entries(editor.fields)){const input=form.elements.namedItem(name);if(input && 'value' in input){input.value=value.value;if('checked' in input)input.checked=value.checked;}}
+    if(editor.kind==='schedule'){
+      toggleEndTime(Boolean(editor.fields.toggleEndTime?.checked || editor.fields.endTime?.value));
+      setTimeFields('start',editor.fields.startTime?.value||'');setTimeFields('end',editor.fields.endTime?.value||'');
+      toggleSettlement(Boolean($('#settlementEnabled').checked));renderAttendeeSummary();
+      $('#memoSummary').textContent=$('#savedMemo').value||'＋ 세부 메모 추가';renderCategories();renderEditorMap(state.pendingPlace);
+    }
+    state.guestRecovery=Boolean(state.session);showToast('입력하던 내용을 복원했습니다. 확인 후 저장해 주세요.');
+  }finally{state.guestRestoring=false;refreshGuestNotice();}
+}
+async function transferGuestWorkspace(){
+  guestStore ||= new GuestDrafts.Store(localStorage);
+  if(!state.guestBook)state.guestBook=guestStore.read();
+  if(!guestHasWork() || !state.guestBook.pending)return false;
+  const userId=state.session.user.id;state.guestImporting=true;refreshGuestNotice();
+  try{
+    state.guestBook=await GuestDrafts.transfer(supabase,guestStore,state.guestBook,userId,()=>state.session?.user.id===userId,book=>{state.guestBook=book;});
+    state.guestMode=false;state.guestStorageError='';
+    localStorage.setItem(`morrow-active-trip-${userId}`,state.guestBook.activeId);
+    return true;
+  }catch(error){state.guestStorageError='계정에 저장하지 못했습니다. 임시 계획은 유지됩니다. '+(error.message||'다시 시도해 주세요.');throw error;}
+  finally{state.guestImporting=false;refreshGuestNotice();}
+}
+function guestBeforeUnload(event){
+  captureGuestEditor();
+  if(!guestHasWork() || state.guestOAuthLeaving || state.guestAllowLeave)return;
+  event.preventDefault();event.returnValue='';
+}
+function bindGuestUI(){
+  $('#guestSaveButton').addEventListener('click',signInWithGoogle);
+  $('#guestLeaveLogin').addEventListener('click',signInWithGoogle);
+  $('#guestStay').addEventListener('click',()=>$('#guestLeaveDialog').close());
+  $('#guestLeaveAnyway').addEventListener('click',()=>{state.guestAllowLeave=true;location.assign(state.guestLeaveHref);});
+  $('#guestFormRecovery').addEventListener('click',async()=>{try{const id=state.guestBook?.editor?.tripId;if(id && id!==state.trip.id)await switchTrip(id);restoreGuestEditor();}catch(error){showToast(error.message);}});
+  $('#guestBackupButton').addEventListener('click',()=>{const raw=state.guestBook?JSON.stringify(state.guestBook,null,2):localStorage.getItem(GuestDrafts.KEY);const url=URL.createObjectURL(new Blob([raw],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='travel-plan-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+  document.addEventListener('input',captureGuestEditor);
+  document.addEventListener('change',captureGuestEditor);
+  document.addEventListener('click',()=>queueMicrotask(captureGuestEditor));
+  document.addEventListener('click',event=>{
+    const a=event.target.closest('a[href]');if(!a || a.target==='_blank' || a.hasAttribute('download') || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button!==0 || !guestHasWork())return;
+    const url=new URL(a.href,location.href);if(!['http:','https:'].includes(url.protocol)||a.getAttribute('href').startsWith('#'))return;
+    event.preventDefault();captureGuestEditor();state.guestLeaveHref=url.href;$('#guestLeaveDialog').showModal();
+  },true);
+  window.addEventListener('pagehide',captureGuestEditor);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')captureGuestEditor();});
+  window.addEventListener('pageshow',()=>{state.guestOAuthLeaving=false;state.guestAllowLeave=false;});
+  window.addEventListener('storage',event=>{if(event.key===GuestDrafts.KEY && state.guestMode){state.guestConflict=true;state.guestStorageError='다른 탭에서 계획이 변경됐습니다. 이 탭의 내용을 백업한 뒤 새로고침해 주세요.';refreshGuestNotice();}});
+  for(const kind of ['schedule','trip'])$(`#${kind}Dialog`).addEventListener('close',()=>clearGuestEditor(kind));
+}
+
 function parseLocalDate(value) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
@@ -92,11 +217,15 @@ function activeItems(ignoreFilter = false) {
   });
 }
 function canEdit() {
+  if(state.sampleReturn)return false;
+  if(isGuestTrip())return guestWritable();
   if (!state.session || !state.trip.id) return false;
   if (state.trip.owner_id === state.session.user.id) return true;
   return state.members.some(member => member.user_id === state.session.user.id && ["owner", "editor"].includes(member.role));
 }
 function currentRole(trip = state.trip) {
+  if(trip?.id===SAMPLE_TRIP_ID)return "viewer";
+  if(isGuestTrip(trip))return guestWritable()?"owner":"viewer";
   if (!state.session || !trip?.id) return "viewer";
   if (trip.owner_id === state.session.user.id) return "owner";
   return state.members.find(member => member.user_id === state.session.user.id)?.role || "viewer";
@@ -171,20 +300,42 @@ function renderMembers() {
   });
 }
 
+const SAMPLE_TRIP_ID = 'sample-seoul-day';
+function leaveSampleTrip() {
+  if (!state.sampleReturn) return;
+  Object.assign(state, state.sampleReturn);
+  state.sampleReturn = null;
+  render(); refreshGuestNotice();
+}
+function showSampleTrip() {
+  if (state.sampleReturn) return;
+  captureGuestEditor();
+  const fields=['trip','items','members','guestMode','activeDate','selectedId','travelerFilter','followClock','clockTrip','syncMessage'];
+  state.sampleReturn=Object.fromEntries(fields.map(key=>[key,state[key]]));
+  const date=todayString();
+  state.guestMode=false;
+  state.trip={...blankTrip(),id:SAMPLE_TRIP_ID,title:'서울 하루 산책 · 샘플',destination:'SEOUL',start_date:date,end_date:date,
+    travelers:[{id:'sample-traveler',nickname:'여행자',avatar:'female-001'}]};
+  const stops=[
+    ['10:00','11:30','경복궁 산책','관광',37.5796,126.9770,0,'하루 여행 계획을 살펴보세요.'],
+    ['12:00','13:00','인사동 점심','음식',37.5744,126.9850,15000,'식사 일정과 예산을 함께 기록할 수 있어요.'],
+    ['14:00','15:00','청계천 걷기','관광',37.5692,126.9786,0,'지도에서 순서대로 이동 경로를 확인해 보세요.'],
+    ['16:00','17:00','명동 카페에서 쉬기','음식',37.5636,126.9845,7000,'예시 장소·시간·금액이며 예약 정보는 아닙니다.']
+  ];
+  state.items=stops.map(([start_time,end_time,name,category,latitude,longitude,cost_won,memo],i)=>({id:`sample-stop-${i}`,trip_id:SAMPLE_TRIP_ID,item_date:date,start_time,end_time,name,category,latitude,longitude,cost_won,memo,settlement_enabled:cost_won>0,sort_order:i,participant_ids:null}));
+  state.members=[];state.activeDate=date;state.selectedId=null;state.travelerFilter='all';
+  setSync('샘플 여행 · 둘러보기');render();refreshGuestNotice();
+}
+
 function renderTripSwitcher() {
   const select = $("#tripSelect");
-  if (!state.session) {
-    select.innerHTML = `<option>${state.trip.id ? safe(state.trip.title) : "Google 로그인 후 여행 관리"}</option>`;
-    select.disabled = true;
-  } else if (!state.trips.length) {
-    select.innerHTML = `<option value="">아직 만든 여행이 없습니다</option>`;
-    select.disabled = true;
-  } else {
-    select.innerHTML = state.trips.map(trip => `<option value="${safe(trip.id)}">${safe(trip.title)}</option>`).join("");
-    select.value = state.trip.id || state.trips[0].id;
-    select.disabled = false;
-  }
-  $("#manageTripsButton").textContent = state.session ? "여행 관리" : "로그인하여 만들기";
+  const guest = state.sampleReturn ? state.sampleReturn.guestMode : state.guestMode;
+  const original = state.sampleReturn?.trip || state.trip;
+  const trips = state.trips.length ? state.trips : (original.id ? [original] : []);
+  select.innerHTML = (trips.length ? trips.map(trip=>`<option value="${safe(trip.id)}">${safe(trip.title)}${guest?' · 임시':''}</option>`).join('') : '<option value="">내 여행 계획</option>') + `<option value="${SAMPLE_TRIP_ID}">서울 하루 산책 · 샘플 여행</option>`;
+  select.value=state.sampleReturn ? SAMPLE_TRIP_ID : (state.trip.id || '');
+  select.disabled=false;
+  $("#manageTripsButton").textContent = state.session || state.guestMode ? "여행 관리" : "내 계획 시작하기";
 }
 
 function render() {
@@ -485,9 +636,10 @@ function resetScheduleForm(item = null) {
   $("#deleteScheduleButton").hidden = !item;
 }
 function openSchedule(item = null) {
-  if (!state.session) {
+  if(state.sampleReturn)return showToast("샘플은 둘러보기용입니다. 여행 목록에서 내 계획을 선택해 주세요.");
+  if (!state.session && !isGuestTrip()) {
     $("#accountDialog").showModal();
-    showToast("일정을 저장하려면 Google 로그인이 필요합니다.");
+    showToast("공유받은 여행은 로그인 후 수정할 수 있습니다.");
     return;
   }
   if (!state.trip.id) {
@@ -591,7 +743,7 @@ async function searchGooglePlaces(rawQuery) {
 
 async function saveSchedule(event) {
   event.preventDefault();
-  if (!state.session || !canEdit()) return;
+  if (!canEdit()) return;
   const form = event.currentTarget;
   const data = new FormData(form);
   const startTime = readTimeFields("start");
@@ -624,10 +776,15 @@ async function saveSchedule(event) {
     icon: "", name: String(data.get("name") || "").trim(), maps_url: place?.mapsUrl || null,
     place_id: place?.placeId || null, latitude: place?.latitude ?? null, longitude: place?.longitude ?? null,
     category: data.get("category") || null, memo: data.get("memo") || null,
-    cost_won: settlementEnabled ? Number(data.get("cost") || 0) : 0, settlement_enabled: settlementEnabled, participant_ids: state.participantIds, split_ratios: splitRatios, created_by: state.session.user.id
+    cost_won: settlementEnabled ? Number(data.get("cost") || 0) : 0, settlement_enabled: settlementEnabled, participant_ids: state.participantIds, split_ratios: splitRatios, created_by: state.session?.user.id || null
   };
   if (!row.name) {errorNode.textContent="일정 이름을 입력해 주세요.";return;}
   const itemId = String(data.get("itemId") || "");
+  if(isGuestTrip()){
+    const saved={...row,id:itemId||crypto.randomUUID(),sort_order:state.items.find(item=>item.id===itemId)?.sort_order||Date.now()};
+    state.items=itemId?state.items.map(item=>item.id===itemId?saved:item):[...state.items,saved];
+    state.activeDate=row.item_date;state.selectedId=saved.id;commitGuest();$('#scheduleDialog').close();render();return;
+  }
   const query = itemId ? supabase.from("mt_itinerary_items").update(row).eq("id", itemId) : supabase.from("mt_itinerary_items").insert(row).select().single();
   const { data: saved, error } = await query;
   if (error) {
@@ -643,7 +800,8 @@ async function saveSchedule(event) {
 }
 async function deleteSchedule(idOverride = null) {
   const id = typeof idOverride === "string" ? idOverride : $("#scheduleForm").elements.itemId.value;
-  if (!id || !confirm("이 일정을 삭제할까요?")) return;
+  if (!canEdit() || !id || !confirm("이 일정을 삭제할까요?")) return;
+  if(isGuestTrip()){state.items=state.items.filter(item=>item.id!==id);state.selectedId=null;commitGuest();$("#scheduleDialog").close();render();return;}
   const { error } = await supabase.from("mt_itinerary_items").delete().eq("id", id);
   if (error) return showToast(error.message);
   if ($("#scheduleDialog").open) $("#scheduleDialog").close();
@@ -656,8 +814,9 @@ async function addCategory() {
   const input = $("#newCategory");
   const category = input.value.trim();
   if (!category || state.trip.categories.includes(category)) return;
-  if (state.trip.owner_id !== state.session?.user.id) return showToast("카테고리는 여행 소유자만 관리할 수 있습니다.");
+  if (!guestWritable() && state.trip.owner_id !== state.session?.user.id) return showToast("카테고리는 여행 소유자만 관리할 수 있습니다.");
   const categories = [...state.trip.categories, category];
+  if(guestWritable()){state.trip.categories=categories;commitGuest();renderCategories();return;}
   const { error } = await supabase.from("mt_trips").update({ categories }).eq("id", state.trip.id);
   if (error) return showToast(error.message);
   state.trip.categories = categories;
@@ -665,9 +824,10 @@ async function addCategory() {
   renderCategories();
 }
 async function removeCategory(category) {
-  if (state.trip.owner_id !== state.session?.user.id) return showToast("카테고리는 여행 소유자만 관리할 수 있습니다.");
+  if (!guestWritable() && state.trip.owner_id !== state.session?.user.id) return showToast("카테고리는 여행 소유자만 관리할 수 있습니다.");
   if (state.trip.categories.length <= 1) return showToast("카테고리는 하나 이상 남겨 주세요.");
   const categories = state.trip.categories.filter(value => value !== category);
+  if(guestWritable()){state.trip.categories=categories;commitGuest();renderCategories();return;}
   const { error } = await supabase.from("mt_trips").update({ categories }).eq("id", state.trip.id);
   if (error) return showToast(error.message);
   state.trip.categories = categories;
@@ -772,6 +932,10 @@ function clearShareParameters() {
 }
 async function switchTrip(tripId, options = {}) {
   dismissMapPick();
+  if(tripId===SAMPLE_TRIP_ID){showSampleTrip();return;}
+  const wasSample=Boolean(state.sampleReturn);leaveSampleTrip();
+  if(wasSample && tripId===state.trip.id)return;
+  if(state.guestMode){if(state.session || state.guestConflict)return;loadGuestRecord(tripId);return;}
   if (!tripId || !state.session) return;
   setSync("여행을 불러오는 중");
   await loadTripData(tripId);
@@ -825,10 +989,12 @@ function subscribeRealtime() {
     .subscribe(status => { if (status === "SUBSCRIBED") setSync("친구들과 실시간 연결됨"); });
 }
 function scheduleReload() {
+  if(state.sampleReturn)return;
   clearTimeout(state.reloadTimer);
   state.reloadTimer = setTimeout(async () => {
     try {
       const tripId = state.trip.id;
+      if(state.sampleReturn)return;
       if (!tripId) return;
       await loadTripData(tripId);
       await loadTripList();
@@ -847,7 +1013,7 @@ function renderTripList() {
   }
   list.innerHTML = state.trips.map(trip => {
     const role = trip._role === "owner" ? "소유자" : trip._role === "editor" ? "편집 가능" : "열람만";
-    return `<div class="trip-list-item ${trip.id === state.trip.id ? "is-active" : ""}"><button type="button" class="trip-list-main" data-trip-id="${safe(trip.id)}"><span><strong>${safe(trip.title)}</strong><small>${safe(trip.start_date)} — ${safe(trip.end_date)}</small></span><em>${role}</em></button><div class="trip-list-actions"><button type="button" data-load-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 불러오기">불러오기</button><button type="button" class="trip-share-button" data-share-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 링크 공유 설정">🔗 링크</button><button type="button" data-delete-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 삭제하기" ${trip.owner_id===state.session?.user.id?'':'disabled title="여행 소유자만 삭제할 수 있습니다"'}>삭제하기</button></div></div>`;
+    return `<div class="trip-list-item ${trip.id === state.trip.id ? "is-active" : ""}"><button type="button" class="trip-list-main" data-trip-id="${safe(trip.id)}"><span><strong>${safe(trip.title)}</strong><small>${safe(trip.start_date)} — ${safe(trip.end_date)}</small></span><em>${role}</em></button><div class="trip-list-actions"><button type="button" data-load-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 불러오기">불러오기</button><button type="button" class="trip-share-button" data-share-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 링크 공유 설정">🔗 링크</button><button type="button" data-delete-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 삭제하기" ${guestWritable()||trip.owner_id===state.session?.user.id?'':'disabled title="여행 소유자만 삭제할 수 있습니다"'}>삭제하기</button></div></div>`;
   }).join("");
   $$("[data-trip-id]", list).forEach(button => button.addEventListener("click", async () => {
     if (button.dataset.tripId !== state.trip.id) await switchTrip(button.dataset.tripId);
@@ -882,22 +1048,21 @@ function resetTripForm(trip = null) {
   $("#saveTripButton").hidden = !editable;
   $("#deleteTripButton").hidden = !isExisting || role !== "owner";
   $("#tripFormError").textContent = "";
-  state.draftTravelers = isExisting ? travelersFor(trip,state.members).map(person=>({...person})) : [{id:state.session.user.id,nickname:state.session.user.user_metadata?.full_name || "나",avatar:"male-001"}];
+  state.draftTravelers = isExisting ? travelersFor(trip,state.members).map(person=>({...person})) : [{id:state.session?.user.id || crypto.randomUUID(),nickname:state.session?.user.user_metadata?.full_name || "나",avatar:"male-001"}];
   state.rosterEditable=editable; renderDraftTravelers();
 }
 function openTripManager(createNew = false) {
-  if (!state.session) {
-    $("#accountDialog").showModal();
-    showToast("여행을 관리하려면 Google 로그인이 필요합니다.");
-    return;
-  }
+  leaveSampleTrip();
+  if (!state.session && !state.guestMode) { clearShareParameters(); initializeGuest(); }
+  if(state.guestMode && !guestWritable())return showToast("임시 계획을 계정에 저장한 뒤 편집해 주세요.");
   renderTripList();
   resetTripForm(createNew || !state.trip.id ? null : state.trips.find(trip => trip.id === state.trip.id) || state.trip);
   if (!$("#tripDialog").open) $("#tripDialog").showModal();
 }
 async function saveTrip(event) {
   event.preventDefault();
-  if (!state.session) return;
+  if (state.guestMode && !guestWritable())return;
+  if (!state.session && !state.guestMode) return;
   const form = event.currentTarget;
   const data = new FormData(form);
   const tripId = String(data.get("tripId") || "");
@@ -911,6 +1076,22 @@ async function saveTrip(event) {
   errorNode.textContent = "";
   if (!title) return void (errorNode.textContent = "여행 제목을 입력해 주세요.");
   if (!startDate || !endDate || endDate < startDate) return void (errorNode.textContent = "종료일은 시작일과 같거나 이후여야 합니다.");
+  if(state.guestMode){
+    let record=state.guestBook.records.find(value=>value.trip.id===tripId);
+    if(record){
+      const old=record.trip,changed=old.start_date!==startDate||old.end_date!==endDate;
+      const differentLength=dateRange(old.start_date,old.end_date).length!==dateRange(startDate,endDate).length;
+      if(changed && differentLength && record.items.length && !confirm('여행 일수가 바뀌어 기존 일정이 삭제됩니다. 계속할까요?'))return;
+      if(changed){
+        const offset=Math.round((parseLocalDate(startDate)-parseLocalDate(old.start_date))/86400000);
+        record.items=differentLength?[]:record.items.map(item=>{const date=parseLocalDate(item.item_date);date.setDate(date.getDate()+offset);return {...item,item_date:`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`};});
+      }
+      record.trip={...old,title,start_date:startDate,end_date:endDate,travelers:roster};
+    }else{
+      record={trip:{...blankTrip(),id:crypto.randomUUID(),title,start_date:startDate,end_date:endDate,travelers:roster},items:[]};state.guestBook.records.push(record);
+    }
+    loadGuestRecord(record.trip.id);commitGuest();$('#tripDialog').close();render();return;
+  }
   if (tripId) {
     if (state.trip.id !== tripId || state.trip.owner_id !== state.session.user.id) return void (errorNode.textContent = "여행 소유자만 정보를 수정할 수 있습니다.");
     const datesChanged = startDate !== state.trip.start_date || endDate !== state.trip.end_date;
@@ -952,6 +1133,7 @@ async function saveTrip(event) {
 async function deleteTrip(targetId) {
   const tripId=typeof targetId==='string'?targetId:$('#tripForm').elements.tripId.value;
   const trip=state.trips.find(t=>t.id===tripId)||(state.trip.id===tripId?state.trip:null);
+  if(state.guestMode){if(!guestWritable()||!trip||!confirm('이 임시 여행을 삭제할까요?'))return;state.guestBook.records=state.guestBook.records.filter(record=>record.trip.id!==tripId);state.guestBook.dirty=state.guestBook.records.length>0;state.guestBook.editor=null;state.guestBook.activeId=state.guestBook.records[0]?.trip.id||null;writeGuestBook();initializeGuest();renderTripList();resetTripForm(state.trip);return;}
   if(!trip||trip.owner_id!==state.session?.user.id)return;
   if(!confirm(`‘${trip.title}’ 여행과 모든 일정을 삭제할까요?`))return;
   try{
@@ -974,7 +1156,7 @@ function updateAccountUI() {
   const name = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split("@")[0];
   $("#profileLabel").textContent = user ? user.email : "Google 로그인";
   $("#accountTitle").textContent = user ? `${name}님의 여행` : "여행을 함께 기록하세요";
-  $("#accountDescription").textContent = user ? `${user.email} 계정으로 일정이 실시간 저장됩니다.` : "Google 계정으로 로그인하면 일정이 저장되고 친구와 실시간으로 함께 편집할 수 있습니다.";
+  $("#accountDescription").textContent = user ? `${user.email} 계정으로 일정이 실시간 저장됩니다.` : "지금까지 만든 임시 계획은 로그인 전에 이 브라우저에 보관하고, Google 로그인 후 계정에 저장합니다. 로그인하지 않아도 계획을 계속 작성할 수 있어요.";
   $("#googleSignIn").hidden = Boolean(user);
   $("#signOutButton").hidden = !user;
   $("#inviteDescription").textContent = "링크가 있으면 로그인 없이 전체 일정을 볼 수 있습니다. 수정 버튼을 누르면 Google 로그인을 안내합니다.";
@@ -990,13 +1172,29 @@ function scrollToCurrentScheduleOnMobile() {
 }
 
 async function signInWithGoogle() {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: authRedirectUrl(location.href), queryParams: { access_type: "offline", prompt: "consent" } }
-  });
-  if (error) showToast(error.message);
+  if(state.guestOAuthLeaving || state.guestImporting || state.guestSigningIn)return;
+  leaveSampleTrip();
+  state.guestSigningIn=true;
+  try{
+    guestStore ||= new GuestDrafts.Store(localStorage);
+    if(!state.guestBook)state.guestBook=guestStore.read();
+    captureGuestEditor();
+    if(guestHasWork()){
+      if(state.guestConflict)throw new Error('다른 탭과 충돌했습니다. 임시 계획을 백업하고 새로고침해 주세요.');
+      state.guestBook.pending ||= {requestedAt:Date.now(),userId:null};
+      if(!writeGuestBook())throw new Error('로그인 이동 전에 임시 저장하지 못했습니다. '+state.guestStorageError);
+    }
+    if(state.session){await restoreWorkspace();return;}
+    const {data,error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:authRedirectUrl(location.href),skipBrowserRedirect:true}});
+    if(error)throw error;if(!data?.url)throw new Error('로그인 주소를 받지 못했습니다. 다시 시도해 주세요.');
+    // A second verified synchronous write immediately before leaving for Google.
+    if(guestHasWork() && !writeGuestBook())throw new Error('임시 저장을 확인하지 못해 로그인 이동을 중단했습니다.');
+    state.guestOAuthLeaving=true;location.assign(data.url);
+  }catch(error){state.guestOAuthLeaving=false;showToast(error.message||'로그인하지 못했습니다. 임시 계획은 유지됩니다.');refreshGuestNotice();}finally{state.guestSigningIn=false;}
 }
 async function signOut() {
+  if(state.guestImporting)return;
+  leaveSampleTrip();
   await supabase.auth.signOut();
   state.session = null;
   state.trips = [];
@@ -1004,8 +1202,7 @@ async function signOut() {
   $("#accountDialog").close();
   const shared = await loadPublicSharedTrip().catch(() => false);
   if (!shared) {
-    setSync("Google 로그인 후 여행을 만들 수 있습니다");
-    render();
+    initializeGuest();
   }
 }
 async function copyInvite() {
@@ -1043,19 +1240,29 @@ async function loadPublicSharedTrip() {
 function restoreWorkspace() {
   // Coalesce repeated SIGNED_IN events while the initial workspace is loading.
   if (state.workspaceLoad) return state.workspaceLoad;
+  leaveSampleTrip();
   const userId = state.session?.user.id;
   state.workspaceLoad = retryWorkspaceLoad(async () => {
     if (!userId || state.session?.user.id !== userId) return;
-    await loadCloudWorkspace();
+    const transferred=await transferGuestWorkspace();
+    if(state.guestBook?.dirty){state.guestMode=true;loadGuestRecord(state.guestBook.activeId);refreshGuestNotice();return;}
+    state.guestMode=false;await loadCloudWorkspace();
+    if(state.guestBook?.importedFor===userId)restoreGuestEditor();
+    refreshGuestNotice();
+    if(transferred)showToast("비로그인으로 만든 계획을 Google 계정에 저장했습니다.");
   }).catch(error => {
     if (state.session?.user.id !== userId) return;
     console.error(`Workspace load failed: ${error.code || "unknown"}: ${error.message || "unknown error"}`);
-    setSync("저장된 여행을 불러오지 못했습니다");
+    if(guestHasWork()){state.guestMode=true;loadGuestRecord(state.guestBook.activeId);refreshGuestNotice();}
+    setSync(guestHasWork()?"계정 저장 미완료 · 다시 시도해 주세요":"저장된 여행을 불러오지 못했습니다");
     showToast("여행을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.");
   }).finally(() => { state.workspaceLoad = null; });
   return state.workspaceLoad;
 }
 async function initializeAuth() {
+  const callbackURL=new URL(location.href);
+  const fragment=new URLSearchParams(callbackURL.hash.slice(1));
+  const hadCallback=callbackURL.searchParams.has('code') || callbackURL.searchParams.has('error') || fragment.has('error');
   const { data, error } = await supabase.auth.getSession();
   if (error) setSync("로그인 상태를 확인하지 못했습니다");
   state.session = data?.session || null;
@@ -1066,9 +1273,7 @@ async function initializeAuth() {
     try {
       const shared = await loadPublicSharedTrip();
       if (!shared) {
-        setEmptyWorkspace();
-        setSync("Google 로그인 후 여행을 만들 수 있습니다");
-        render();
+        initializeGuest();
       }
     } catch (shareError) {
       setSync("공유 여행을 불러오지 못했습니다");
@@ -1076,10 +1281,20 @@ async function initializeAuth() {
       render();
     }
   }
+  if(hadCallback){
+    for(const key of ['code','error','error_code','error_description'])callbackURL.searchParams.delete(key);
+    if(fragment.has('error') || fragment.has('access_token'))callbackURL.hash='';
+    history.replaceState({},'',callbackURL);
+    if(!state.session){
+      $('#accountDescription').textContent='로그인을 완료하지 못했습니다. 로그인 시작 주소와 Supabase 복귀 주소를 확인한 뒤 다시 시도해 주세요. 임시 계획은 원래 브라우저에 보관되어 있습니다.';
+      $('#accountDialog').showModal();
+    }
+  }
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === "INITIAL_SESSION") return;
     state.session = session;
     if (session && event === "SIGNED_IN") setTimeout(() => restoreWorkspace(), 0);
+    if(!session && event==="SIGNED_OUT"){leaveSampleTrip();if(!state.guestMode){setEmptyWorkspace();initializeGuest();}}
     updateAccountUI();
   });
 }
@@ -1401,6 +1616,7 @@ $("#travelerFilter").addEventListener("change",event=>{state.travelerFilter=even
 $("#placeSearchInput").addEventListener("keydown",event=>{if(event.key==='Enter'){event.preventDefault();clearTimeout(placeSearchTimer);searchGooglePlaces(event.target.value);}if(event.key==='Escape'){$("#placeSearchResults").hidden=true;event.stopPropagation();}});
 $("#scheduleDialog").addEventListener("close",()=>{state.placeResolveRequest++;state.editorMapRequest++;clearTimeout(placeSearchTimer);clearEditorMarkers();closeCategoryMenu();});
 $("#scheduleDialog").addEventListener("click",event=>{if(!event.target.closest('.category-picker'))closeCategoryMenu();});
+bindGuestUI();
 renderCategories();
 render();
 Promise.allSettled([initMap(), initializeAuth()]);

@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./airy.css">
   <link rel="stylesheet" href="./captain.css">
-  <link rel="stylesheet" href="./studio.css?v=11">
+  <link rel="stylesheet" href="./studio.css?v=12">
 </head>
 <body>
   <div class="app-shell">
@@ -45,6 +45,7 @@
           </div>
         </div>
         <div class="captain-welcome"><img src="./assets/captain/guide-flag.webp" alt="" width="30" height="36"><strong id="captainCountdown" hidden></strong><p id="captainMessage">이번 여행도 함께 짜볼까요?</p></div>
+        <aside id="guestNotice" class="guest-notice" hidden><p id="guestNoticeText"></p><button id="guestSaveButton" type="button">Google 로그인하고 계획 유지</button><button id="guestBackupButton" type="button" hidden>계획 파일로 백업</button></aside><button id="guestFormRecovery" class="guest-recovery" type="button" hidden>입력하던 내용 다시 열기</button>
         <div class="day-tabs" id="dayTabs" role="tablist" aria-label="여행 날짜"></div>
         <div class="traveler-filter"><label for="travelerFilter">동행별 일정</label><select id="travelerFilter"><option value="all">모두 보기</option></select></div>
         <div class="agenda-heading">
@@ -161,6 +162,7 @@
     <p id="largePhotoCredit"></p>
   </dialog>
 
+  <dialog id="guestLeaveDialog" class="app-dialog small-dialog" aria-labelledby="guestLeaveTitle"><h2 id="guestLeaveTitle">여행 계획을 유지할까요?</h2><p>아직 계정에 저장되지 않았어요. 이 페이지를 떠나거나 브라우저 데이터가 삭제되면 계획을 잃을 수 있습니다. Google 로그인하면 지금까지 만든 계획이 계정에 저장돼요.</p><div class="guest-leave-actions"><button id="guestLeaveLogin" type="button" class="button button-primary">Google 로그인하고 계획 유지</button><button id="guestStay" type="button" class="button button-secondary">계속 작성하기</button><button id="guestLeaveAnyway" type="button" class="button button-secondary">저장하지 않고 나가기</button></div></dialog>
   <dialog id="accountDialog" class="app-dialog small-dialog">
     <div class="dialog-heading"><div><p class="eyebrow">WELCOME</p><h2 id="accountTitle">여행을 함께 기록하세요</h2></div><button class="dialog-close" type="button" aria-label="닫기">×</button></div>
     <p class="dialog-description" id="accountDescription">Google 계정으로 로그인하면 일정이 저장되고 친구와 실시간으로 함께 편집할 수 있습니다.</p>
@@ -179,6 +181,7 @@
   <script src="./avatar-landmarks.js?v=4" defer></script>
   <script src="./avatar-studio.js?v=4" defer></script>
   <script src="./captain-map.js?v=4" defer></script>
-  <script type="module" src="./app.js?v=5"></script>
+  <script src="./guest-drafts.js?v=1" defer></script>
+  <script type="module" src="./app.js?v=13"></script>
 </body>
 </html>
