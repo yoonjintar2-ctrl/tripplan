@@ -181,3 +181,14 @@ dialog:not([open]){display:none!important}
  #lookDialog .dialog-heading,#avatarDialog .dialog-heading{position:sticky;top:0;background:white;z-index:2}
  #lookDialog .look-footer{position:sticky;bottom:0;background:white}
 }
+
+.route-time-badge{display:block;background:#fffffff5;color:#263b35;border:1px solid #afbdb5;border-radius:6px;padding:3px 5px;font:600 10px/1.2 sans-serif;white-space:nowrap;box-shadow:0 1px 4px #0003}
+.route-notices{position:absolute;bottom:4px;left:8px;right:8px;z-index:8;max-height:42px;overflow:auto;background:#fffffff0;color:#555;font-size:9px;padding:4px}
+.captain-journey{position:relative;width:52px;height:68px;pointer-events:none}.captain-journey img{width:48px;height:62px;object-fit:contain}.journey-vehicle{position:absolute;bottom:-3px;left:-2px;font-size:43px;line-height:1}.journey-caption{position:absolute;bottom:100%;left:-8px;white-space:nowrap;font-size:10px;background:#fff;border-radius:4px;padding:2px}
+.captain-journey[data-mode=walk] img{animation:journey-stride .35s infinite alternate}.captain-journey[data-mode=drive] img,.captain-journey[data-mode=subway] img,.captain-journey[data-mode=transit] img,.captain-journey[data-mode=flight] img{height:40px;object-position:top;clip-path:inset(0 0 30% 0);transform:translateY(-5px)}
+.captain-in-transit .captain-stop.is-selected>img{visibility:hidden}
+@keyframes journey-stride{from{transform:translateY(0) rotate(-4deg)}to{transform:translateY(-4px) rotate(4deg)}}
+@media(max-width:850px){.agenda-item{grid-template-columns:minmax(0,1fr) 43px 28px}.agenda-expand{width:43px;font-size:10px}.captain-journey{transform:scale(.85)}}
+@media(prefers-reduced-motion:reduce){.captain-journey img{animation:none!important}}
+
+.journey-walk-sprite{display:none;position:absolute;inset:0;background-image:url('./assets/studio/captain-motion-atlas.webp');background-size:400% 300%;background-position:0 0}.captain-journey[data-mode=walk] .journey-walk-sprite{display:block;animation:journey-frames .6s steps(3) infinite}.captain-journey[data-mode=walk] img{visibility:hidden}@keyframes journey-frames{to{background-position:100% 0}}

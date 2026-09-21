@@ -560,7 +560,7 @@ function render() {
   $("#totalCost").textContent = won(state.items.reduce((sum, item) => sum + (item.settlement_enabled ? Number(item.cost_won || 0) : 0), 0));
   $("#agendaList").innerHTML = items.length ? items.map(item => {
     const current = isCurrentItem(item, items);
-    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p></span>${agendaFaces(item)}</button><button class="agenda-expand" type="button" data-expand-item="${safe(item.id)}" aria-label="${safe(item.name)} 세부 내용 ${state.mobileExpandedId===item.id?'접기':'펼치기'}" aria-expanded="${state.mobileExpandedId===item.id}">${state.mobileExpandedId===item.id?'▴':'▾'}</button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button>${item.id===state.selectedId && item.id===state.mobileExpandedId?`<div class="mobile-agenda-details"><strong>${safe(item.name)}</strong><span>${safe(item.item_date)} · ${safe(formatTime(item.start_time))}${item.end_time?' — '+safe(formatTime(item.end_time)):''}</span>${item.category?`<span>${safe(item.category)}</span>`:''}${item.memo?`<p>${safe(item.memo)}</p>`:''}${item.settlement_enabled?`<span>${won(item.cost_won || 0)}</span>`:''}</div>`:''}</div>`;
+    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p></span>${agendaFaces(item)}</button><button class="agenda-expand" type="button" data-expand-item="${safe(item.id)}" aria-label="${safe(item.name)} 세부 내용 ${state.mobileExpandedId===item.id?'접기':'펼치기'}" aria-expanded="${state.mobileExpandedId===item.id}">${state.mobileExpandedId===item.id?'접기':'자세히'}</button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button>${item.id===state.selectedId && item.id===state.mobileExpandedId?`<div class="mobile-agenda-details"><strong>${safe(item.name)}</strong><span>${safe(item.item_date)} · ${safe(formatTime(item.start_time))}${item.end_time?' — '+safe(formatTime(item.end_time)):''}</span>${item.category?`<span>${safe(item.category)}</span>`:''}${item.memo?`<p>${safe(item.memo)}</p>`:''}${item.settlement_enabled?`<span>${won(item.cost_won || 0)}</span>`:''}</div>`:''}</div>`;
   }).join("") : `<div class="agenda-empty captain-empty"><img src="./assets/captain/guide-map.webp" width="98" height="120" alt="지도를 함께 보는 캡틴비어"><strong>아직 비어 있는 여행 지도</strong><p>가고 싶은 곳 하나로 시작해요.<br>제가 옆에서 함께할게요.</p></div>`;
   $$("[data-item-id]").forEach(button => {
     button.addEventListener("click", () => selectStop(button.dataset.itemId, true));
@@ -735,13 +735,13 @@ async function renderMap() {
   state.markers.forEach(marker=>{marker.map=null;});state.markers.clear();
   state.routes.forEach(route=>route.setMap(null));state.routes=[];
   const items=activeItems().filter(itemPosition), allItems=activeItems(true), allPeople=travelers();
-  window.CaptainMap?.setRoute(state.map,items,state.trip.id+":"+state.activeDate+":"+state.travelerFilter,state.selectedId);
+  window.RouteJourney?.update(state.map,items,state.trip.id+":"+state.activeDate,state.selectedId,{firstDay:state.activeDate===state.trip.start_date}).catch(()=>{});
   items.forEach(item=>{const marker=new AdvancedMarkerElement({map:state.map,position:itemPosition(item),title:item.name,content:markerContent(item,item.id===state.selectedId),zIndex:item.id===state.selectedId?220:50,gmpClickable:true});marker.addEventListener('gmp-click',()=>selectStop(item.id,true));state.markers.set(item.id,marker);});
   const colors=['#292929','#707070','#a24a43','#596c70','#867c69','#8b6666'];
   const people=allPeople.filter(person=>state.travelerFilter==='all'||state.travelerFilter===person.id);
   const routeGroups=new Map();
   people.forEach(person=>{const path=personStops(items,person.id),signature=path.map(item=>item.id).join('|');if(!signature)return;if(!routeGroups.has(signature))routeGroups.set(signature,{path,people:[],color:colors[routeGroups.size%colors.length]});routeGroups.get(signature).people.push(person);});
-  routeGroups.forEach(group=>{state.routes.push(new google.maps.Polyline({map:state.map,path:group.path.map(itemPosition),geodesic:true,strokeColor:group.color,strokeOpacity:.7,strokeWeight:3}));});
+
   $("#routeLegend").innerHTML=[...routeGroups.values()].map(group=>`<span style="--route-color:${group.color}"><i></i>${group.people.map(p=>safe(p.nickname)).join(' · ')}</span>`).join('');
   const selected=selectedItem(), cutoff=selected?.start_time, selectedIndex=allItems.findIndex(item=>item.id===state.selectedId);
   const currentItems=selected ? allItems.filter((item,index)=>cutoff && item.start_time ? item.start_time<=cutoff : index<=selectedIndex) : [];
@@ -790,6 +790,9 @@ function selectStop(id, animate = false) {
   if(state.selectedId!==id)state.mobileExpandedId=null;
   state.selectedId = id;
   render();
+  const row=$$('[data-item-id]').find(node=>node.dataset.itemId===id)?.closest('.agenda-item');
+  const list=$('#agendaList');
+  if(row){const a=row.getBoundingClientRect(),b=list.getBoundingClientRect();if(a.top<b.top)list.scrollTop+=a.top-b.top;else if(a.bottom>b.bottom)list.scrollTop+=a.bottom-b.bottom;}
   const item = selectedItem();
   if (item) panMapToItem(item, animate);
 }

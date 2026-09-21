@@ -1,0 +1,24 @@
+const {JSDOM}=require('jsdom'),vm=require('vm'),fs=require('fs'),assert=require('assert/strict');
+const dom=new JSDOM('<div class="map-panel"></div><p id="routeNotices"></p>',{runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
+w.matchMedia=()=>({matches:false,addEventListener(){}});w.requestAnimationFrame=()=>1;w.cancelAnimationFrame=()=>{};
+vm.runInContext(fs.readFileSync('dist/route-journey.js','utf8'),dom.getInternalVMContext());
+const R=w.RouteJourney,a={latitude:37,longitude:127},b={latitude:38,longitude:128};
+const route=(mode,seconds)=>({mode,seconds,path:[{lat:37,lng:127},{lat:38,lng:128}],parts:[],warnings:[]});
+(async()=>{
+let calls=[];let result=await R.choose(a,b,async(_,__,m)=>{calls.push(m);return route('walk',1800)});assert.equal(result.mode,'walk');assert.equal(calls.length,1);
+result=await R.choose(a,b,async(_,__,m)=>m==='WALKING'?route('walk',1801):m==='DRIVING'?route('drive',600):route('subway',500));assert.equal(result.mode,'subway');
+result=await R.choose(a,b,async(_,__,m)=>m==='WALKING'?null:m==='DRIVING'?route('drive',600):route('subway',900));assert.equal(result.mode,'drive');
+result=await R.choose(a,b,async()=>null);assert.equal(result.mode,'jump');assert.equal(result.path.length,0);assert.equal(result.seconds,null);
+result=await R.choose(a,b,async()=>{throw Error('Routes API unavailable')});assert.equal(result.mode,'jump');
+const n=R.normalize({path:[{lat:1,lng:1},{lat:2,lng:2}],durationMillis:60000,legs:[{steps:[{travelMode:'TRANSIT',path:[{lat:1,lng:1},{lat:2,lng:2}],transitDetails:{transitLine:{vehicle:{type:'SUBWAY'}}}}]}]},'TRANSIT');assert.equal(n.mode,'subway');assert.equal(n.parts[0].mode,'subway');assert.equal(n.seconds,60);
+assert.equal(R.samplePath([{lat:0,lng:0},{lat:0,lng:1},{lat:0,lng:3}],.5).lng,1.5);
+const markers=[],polylines=[];
+w.google={maps:{importLibrary:async name=>name==='routes'?{Route:{computeRoutes:async()=>({routes:[{path:[{lat:37,lng:127},{lat:38,lng:128}],durationMillis:60000}]})}}:{AdvancedMarkerElement:class{constructor(opts){Object.assign(this,opts);markers.push(this);}}},Polyline:class{constructor(opts){Object.assign(this,opts);polylines.push(this);}setMap(m){this.map=m;}},LatLngBounds:class{extend(){}}}};
+let draw;w.requestAnimationFrame=fn=>{draw=fn;return 1;};const map={panTo(){},setZoom(){},fitBounds(){}};
+const items=[{...a,id:'a'},{...b,id:'b'}];await R.update(map,items,'test','a');assert.equal(markers.filter(m=>m.map&&m.content.className==='route-time-badge').length,1);
+await R.update(map,items,'test','b');assert(w.document.querySelector('.map-panel').classList.contains('captain-in-transit'));
+for(let t=1;t<4000;t+=100)draw(t);
+assert.equal(w.document.querySelector('.map-panel').classList.contains('captain-in-transit'),false);
+await R.update(map,items,'test',null);draw(1);assert(markers.some(m=>m.map&&m.content.className==='captain-journey'));
+console.log('PASS: 30-minute walking threshold, subway versus car, unavailable routes jump without time/line, transit steps and distance interpolation');
+})().catch(e=>{console.error(e);process.exitCode=1});
