@@ -192,3 +192,19 @@ dialog:not([open]){display:none!important}
 @media(prefers-reduced-motion:reduce){.captain-journey img{animation:none!important}}
 
 .journey-walk-sprite{display:none;position:absolute;inset:0;background-image:url('./assets/studio/captain-motion-atlas.webp');background-size:400% 300%;background-position:0 0}.captain-journey[data-mode=walk] .journey-walk-sprite{display:block;animation:journey-frames .6s steps(3) infinite}.captain-journey[data-mode=walk] img{visibility:hidden}@keyframes journey-frames{to{background-position:100% 0}}
+
+/* v23: square atlas cells, no empty bubble, and complete Runway vehicles. */
+.captain-journey{width:68px;height:68px;transform:none}
+.journey-caption:empty{display:none}
+.journey-walk-sprite{width:68px;height:68px;inset:auto 0 0;background-size:400% 300%}
+.captain-journey[data-mode=walk] .journey-walk-sprite{animation:journey-frames .4s steps(3) infinite}
+.journey-transport{display:none;position:absolute;width:88px;height:88px;left:-10px;bottom:-2px;background:center/contain no-repeat}
+.journey-car{background-image:url('./assets/studio/captain-car-v23.webp')}
+.journey-plane{background-image:url('./assets/studio/captain-plane-v23.webp')}
+.captain-journey[data-mode=drive] .journey-car,.captain-journey[data-mode=flight] .journey-plane{display:block}
+.captain-journey[data-mode=drive]>img,.captain-journey[data-mode=flight]>img,.captain-journey[data-mode=drive] .journey-vehicle,.captain-journey[data-mode=flight] .journey-vehicle{display:none}
+button.route-time-badge{min-height:26px;min-width:0;cursor:pointer;padding:5px 6px;touch-action:manipulation}
+button.route-time-badge:disabled{opacity:1;cursor:default}
+button.route-time-badge:focus-visible{outline:2px solid #c43d3d;outline-offset:2px}
+
+.journey-transport,.journey-walk-sprite{transform:scaleX(var(--journey-facing,1))}

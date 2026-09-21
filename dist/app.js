@@ -22,7 +22,7 @@ const GuestDrafts = (() => {
     }
   }
   const tripFields = ['id','title','destination','start_date','end_date','categories','travelers'];
-  const itemFields = ['id','trip_id','item_date','start_time','end_time','icon','name','maps_url','place_id','latitude','longitude','category','memo','cost_won','settlement_enabled','participant_ids','split_ratios','sort_order'];
+  const itemFields = ['id','trip_id','item_date','start_time','end_time','icon','name','maps_url','place_id','latitude','longitude','category','memo','cost_won','settlement_enabled','participant_ids','split_ratios','sort_order','transport_mode'];
   const pick = (value, fields) => Object.fromEntries(fields.filter(k=>value[k]!==undefined).map(k=>[k,clone(value[k])]));
   async function transfer(client, store, book, userId, current = () => true, checkpoint = () => {}) {
     if (!book.dirty || !book.pending) return book;
@@ -735,7 +735,7 @@ async function renderMap() {
   state.markers.forEach(marker=>{marker.map=null;});state.markers.clear();
   state.routes.forEach(route=>route.setMap(null));state.routes=[];
   const items=activeItems().filter(itemPosition), allItems=activeItems(true), allPeople=travelers();
-  window.RouteJourney?.update(state.map,items,state.trip.id+":"+state.activeDate,state.selectedId,{firstDay:state.activeDate===state.trip.start_date}).catch(()=>{});
+  window.RouteJourney?.update(state.map,items,state.trip.id+":"+state.activeDate,state.selectedId,{firstDay:state.activeDate===state.trip.start_date,onModeChange:canEdit()?saveTransportMode:null,onError:showToast}).catch(()=>{});
   items.forEach(item=>{const marker=new AdvancedMarkerElement({map:state.map,position:itemPosition(item),title:item.name,content:markerContent(item,item.id===state.selectedId),zIndex:item.id===state.selectedId?220:50,gmpClickable:true});marker.addEventListener('gmp-click',()=>selectStop(item.id,true));state.markers.set(item.id,marker);});
   const colors=['#292929','#707070','#a24a43','#596c70','#867c69','#8b6666'];
   const people=allPeople.filter(person=>state.travelerFilter==='all'||state.travelerFilter===person.id);
@@ -990,6 +990,22 @@ async function searchGooglePlaces(rawQuery) {
   }
 }
 
+async function saveTransportMode(itemId,mode){
+  if(!canEdit())throw Error('이 여행을 수정할 권한이 없습니다.');
+  if(!['WALKING','DRIVING'].includes(mode))throw Error('지원하지 않는 이동수단입니다.');
+  const tripId=state.trip.id,item=state.items.find(i=>i.id===itemId);
+  if(!item)throw Error('일정을 다시 선택해 주세요.');
+  if(isGuestTrip()){
+    const previous=item.transport_mode;const before=GuestDrafts.clone(state.guestBook);item.transport_mode=mode;commitGuest();
+    if(state.guestStorageError){item.transport_mode=previous;state.guestBook=before;throw Error(state.guestStorageError);}
+  }else{
+    const {data,error}=await supabase.from('mt_itinerary_items').update({transport_mode:mode}).eq('id',itemId).eq('trip_id',tripId).select('id,transport_mode').single();
+    if(error||!data)throw Error(error?.message||'이동수단을 저장하지 못했습니다.');
+    if(state.trip?.id===tripId){const current=state.items.find(i=>i.id===itemId);if(current)current.transport_mode=data.transport_mode;setSync("실시간 저장됨");}
+  }
+  showToast('이동수단을 저장했습니다.');
+}
+
 async function saveSchedule(event) {
   event.preventDefault();
   if (!canEdit()) return;
@@ -1031,7 +1047,7 @@ async function saveSchedule(event) {
   if (!row.name) {errorNode.textContent="일정 이름을 입력해 주세요.";return;}
   const itemId = String(data.get("itemId") || "");
   if(isGuestTrip()){
-    const saved={...row,id:itemId||newLocalId(),sort_order:state.items.find(item=>item.id===itemId)?.sort_order||Date.now()};
+    const saved={...state.items.find(item=>item.id===itemId),...row,id:itemId||newLocalId(),sort_order:state.items.find(item=>item.id===itemId)?.sort_order||Date.now()};
     state.items=itemId?state.items.map(item=>item.id===itemId?saved:item):[...state.items,saved];
     state.activeDate=row.item_date;state.selectedId=saved.id;commitGuest();$('#scheduleDialog').close();render();return;
   }

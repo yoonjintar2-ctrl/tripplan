@@ -26,9 +26,10 @@ run(`initializeGuest();state.trip.start_date='2099-10-01';state.trip.end_date='2
 assert.equal(el('.mobile-agenda-details'),null);
 el('[data-item-id=b]').click();assert.equal(el('.mobile-agenda-details'),null);el('[data-expand-item=b]').click();assert.match(el('.mobile-agenda-details').textContent,/눌렀을 때/);
 el('[data-expand-item=b]').click();assert.equal(el('.mobile-agenda-details'),null);el('[data-expand-item=b]').click();
+await run("saveTransportMode('b','DRIVING')");assert.equal(run("state.items.find(i=>i.id==='b').transport_mode"),'DRIVING');
 const id=run('state.trip.id');
 run('state.selectedId=null;state.activeDate=state.trip.start_date;state.guestBook=null;initializeGuest()');
-assert.equal(run('state.trip.id'),id);assert.equal(run('state.selectedId'),'b');assert.equal(run('state.activeDate'),'2099-10-02');
+assert.equal(run('state.trip.id'),id);assert.equal(run("state.items.find(i=>i.id==='b').transport_mode"),'DRIVING');assert.equal(run('state.selectedId'),'b');assert.equal(run('state.activeDate'),'2099-10-02');
 run(`state.guestBook.records.push({trip:{...state.trip,id:'other',title:'다른 여행'},items:[]});writeGuestBook();loadGuestRecord('other');loadGuestRecord('${id}');`);
 assert.equal(run('state.selectedId'),'b');run('state.guestBook=null;initializeGuest()');assert.equal(run('state.trip.id'),id);
 run('openTripManager()');assert.equal(el('#tripDialog').dataset.panel,'list');el('[data-trip-panel=details]').click();assert.equal(el('#tripDialog').dataset.panel,'details');el('[data-trip-panel=list]').click();assert.equal(el('#tripDialog').dataset.panel,'list');

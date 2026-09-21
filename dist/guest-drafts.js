@@ -21,7 +21,7 @@
     }
   }
   const tripFields = ['id','title','destination','start_date','end_date','categories','travelers'];
-  const itemFields = ['id','trip_id','item_date','start_time','end_time','icon','name','maps_url','place_id','latitude','longitude','category','memo','cost_won','settlement_enabled','participant_ids','split_ratios','sort_order'];
+  const itemFields = ['id','trip_id','item_date','start_time','end_time','icon','name','maps_url','place_id','latitude','longitude','category','memo','cost_won','settlement_enabled','participant_ids','split_ratios','sort_order','transport_mode'];
   const pick = (value, fields) => Object.fromEntries(fields.filter(k=>value[k]!==undefined).map(k=>[k,clone(value[k])]));
   async function transfer(client, store, book, userId, current = () => true, checkpoint = () => {}) {
     if (!book.dirty || !book.pending) return book;

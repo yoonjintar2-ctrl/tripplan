@@ -26,12 +26,12 @@
   if(transit&&(!drive || (transit.mode==='subway'&&transit.seconds<drive.seconds)))return transit;
   return drive||jump;
  }
- async function leg(a,b){
-  const key=JSON.stringify([pos(a),pos(b)]),saved=cache.get(key);
-  if(saved&&Date.now()-saved.time<300000)return saved.promise;
-  const promise=choose(a,b);cache.set(key,{time:Date.now(),promise});
+ async function leg(a,b,mode=b.transport_mode){
+  const key=JSON.stringify([pos(a),pos(b),mode||null]),saved=cache.get(key);
+  if(saved&&Date.now()-saved.time<300000)return (await saved.promise)||{path:[],parts:[{path:[pos(a),pos(b)],mode:'jump'}],mode:'jump',seconds:null,warnings:[]};
+  const promise=['WALKING','DRIVING'].includes(mode)?request(a,b,mode).catch(()=>null):choose(a,b);cache.set(key,{time:Date.now(),promise});
   if(cache.size>250)cache.delete(cache.keys().next().value);
-  return promise;
+  return (await promise)||{path:[],parts:[{path:[pos(a),pos(b)],mode:'jump'}],mode:'jump',seconds:null,warnings:[]};
  }
  function samplePath(path,t){
   if(!path.length)return null;if(path.length===1)return path[0];
@@ -44,23 +44,46 @@
  const flights=new Set();
  function stop(){cancelAnimationFrame(frame);frame=0;last=0;}
  function clean(){lines.forEach(l=>l.setMap(null));labels.forEach(l=>l.map=null);lines=[];labels=[];}
- function partSegments(parts){return parts.map(p=>({...p,duration:p.mode==='jump'?1000:Math.max(1400,Math.min(7000,p.path.length*70)),wait:400}));}
+ // Only the animation is simplified; the visible Google path stays exact.
+ function simplify(path,tolerance=.00009){
+  if(path.length<3)return path;
+  const a=path[0],b=path.at(-1),dx=b.lng-a.lng,dy=b.lat-a.lat,d=dx*dx+dy*dy;
+  let max=0,index=0;
+  for(let i=1;i<path.length-1;i++){const p=path[i],u=d?Math.max(0,Math.min(1,((p.lng-a.lng)*dx+(p.lat-a.lat)*dy)/d)):0;
+   const e=Math.hypot(p.lng-a.lng-u*dx,p.lat-a.lat-u*dy);if(e>max){max=e;index=i;}}
+  return max>tolerance?[...simplify(path.slice(0,index+1),tolerance).slice(0,-1),...simplify(path.slice(index),tolerance)]:[a,b];
+ }
+ function partSegments(parts){
+  const merged=[];
+  for(const p of parts){const prev=merged.at(-1);if(prev?.mode===p.mode&&p.mode!=='jump'&&p.mode!=='flight')prev.path.push(...p.path);else merged.push({...p,path:[...p.path]});}
+  return merged.map(p=>({...p,path:simplify(p.path),duration:p.mode==='jump'?600:p.mode==='flight'?1800:Math.min(2200,Math.max(800,simplify(p.path).length*120)),wait:80}));
+ }
+ const readyAssets=new Map();
+ function preload(mode){
+  const file=mode==='drive'?'captain-car-v23.webp':mode==='flight'?'captain-plane-v23.webp':mode==='walk'?'captain-motion-atlas.webp':null;
+  if(!file)return Promise.resolve();
+  if(!readyAssets.has(file))readyAssets.set(file,new Promise(resolve=>{
+   const im=new Image();const timer=setTimeout(()=>{readyAssets.delete(file);resolve();},8000);
+   im.onload=()=>{clearTimeout(timer);resolve();};im.onerror=()=>{clearTimeout(timer);readyAssets.delete(file);resolve();};im.src='./assets/studio/'+file;
+  }));return readyAssets.get(file);
+ }
  function draw(now){
   if(document.hidden){stop();return;}
   if(last)elapsed+=Math.min(now-last,100);last=now;
   let t=elapsed,seg;for(const s of segments){if(t<s.duration+s.wait){seg=s;break;}t-=s.duration+s.wait;}
   if(!seg){if(loop){segments=segments.filter(s=>s.mode!=='flight');elapsed=0;frame=requestAnimationFrame(draw);return;}marker.map=null;arrive?.();stop();return;}
-  if(segments[0]?.mode==='flight'&&seg!==segments[0]&&!segments[0].landed){segments[0].landed=true;map.panTo(segments[0].path.at(-1));map.setZoom(14);}
+
   const u=Math.min(1,t/seg.duration);marker.position=samplePath(seg.path,u);
   const node=marker.content;node.dataset.mode=seg.mode;
+  const facing=seg.path.at(-1).lng<seg.path[0].lng?-1:1;node.style.setProperty('--journey-facing',facing);
   node.querySelector('.journey-vehicle').textContent=({drive:'🚗',subway:'🚇',transit:'🚌',flight:'✈️'})[seg.mode]||'';
-  node.style.transform=seg.mode==='jump'?`translateY(${-Math.sin(u*Math.PI)*65}px)`:'';
-  node.querySelector('.journey-caption').textContent=seg.mode==='flight'?'한국 출발':'';
+  node.style.transform=seg.mode==='jump'?`translateY(${-Math.sin(u*Math.PI)*65}px)`:seg.mode==='flight'?`translate(0,${-180*Math.pow(1-u,2)}px) scale(${1+.45*(1-u)})`:'';
+  node.querySelector('.journey-caption').textContent='';
   frame=requestAnimationFrame(draw);
  }
  async function update(nextMap,items,key,selectedId,options={}){
-  const signature=key+'|'+items.map(i=>i.id+':'+i.latitude+','+i.longitude).join('|');
-  if(signature===context && selection===selectedId)return;
+  const signature=key+'|'+items.map(i=>i.id+':'+i.latitude+','+i.longitude+','+(i.transport_mode||'')).join('|');
+  if(signature===context && selection===selectedId&&!options.force)return;
   const oldSelection=selection,oldContext=context;context=signature;selection=selectedId;const mine=++epoch;
   stop();clean();if(marker)marker.map=null;map=nextMap;
   document.querySelector('.map-panel')?.classList.remove('captain-in-transit');
@@ -72,39 +95,56 @@
   const warnings=new Set();legs.forEach(l=>l.warnings.forEach(w=>warnings.add(w)));
   const notice=document.getElementById('routeNotices');
   if(notice){notice.textContent=[...warnings].join(' ');notice.hidden=!warnings.size;}
-  legs.forEach(l=>{
+  legs.forEach((l,index)=>{
    if(!l.path.length)return;
    lines.push(new google.maps.Polyline({map,path:l.path,strokeColor:'#fff',strokeOpacity:.95,strokeWeight:7,zIndex:4}));
    lines.push(new google.maps.Polyline({map,path:l.path,strokeColor:l.mode==='walk'?'#497566':l.mode==='subway'?'#436caa':'#68646e',strokeOpacity:.95,strokeWeight:3,zIndex:5}));
-   const badge=document.createElement('span');badge.className='route-time-badge';badge.textContent=({walk:'도보',drive:'차량',subway:'대중',transit:'대중'})[l.mode]+' '+Math.max(1,Math.ceil(l.seconds/60))+'분';badge.title='Google 추천 경로 · 조회 시점 예상 시간';
+   const badge=document.createElement('button');badge.type='button';badge.className='route-time-badge';badge.textContent=({walk:'도보',drive:'차량',subway:'대중',transit:'대중'})[l.mode]+' '+Math.max(1,Math.ceil(l.seconds/60))+'분';badge.title='누르면 도보 / 차량 경로로 변경';
+   badge.disabled=!options.onModeChange;badge.setAttribute('aria-label',badge.textContent+' · '+(l.mode==='walk'?'차량':'도보')+'로 변경');
+   badge.addEventListener('click',async event=>{
+    event.stopPropagation();if(badge.disabled||mine!==epoch)return;badge.disabled=true;
+    const next=l.mode==='walk'?'DRIVING':'WALKING';
+    try{
+     const candidate=await leg(items[index],items[index+1],next);
+     if(mine!==epoch)return;
+     if(!candidate.path.length){options.onError?.('이 구간은 '+(next==='WALKING'?'도보':'차량')+' 경로를 찾지 못했습니다. 기존 경로를 유지합니다.');return;}
+     await options.onModeChange(items[index+1].id,next);
+     if(mine!==epoch)return;
+     const changed=items.map((item,i)=>i===index+1?{...item,transport_mode:next}:item);
+     await update(nextMap,changed,key,selectedId,{...options,force:true,previewLeg:index});
+    }catch(error){options.onError?.(error.message||'이동수단을 저장하지 못했습니다. 다시 시도해 주세요.');}
+    finally{badge.disabled=!options.onModeChange;}
+   });
    labels.push(new AdvancedMarkerElement({map,position:samplePath(l.path,.5),content:badge,zIndex:70}));
   });
   let parts=[],selectedIndex=items.findIndex(i=>i.id===selectedId),oldIndex=items.findIndex(i=>i.id===oldSelection);
   if(selectedIndex>=0){
    if(oldContext===signature&&oldIndex>=0&&oldIndex!==selectedIndex){
     if(oldIndex<selectedIndex)parts=legs.slice(oldIndex,selectedIndex).flatMap(l=>l.parts);
-    else for(let i=oldIndex;i>selectedIndex;i--){const reverse=await leg(items[i],items[i-1]);if(mine!==epoch)return;parts.push(...reverse.parts);if(reverse.path.length)lines.push(new google.maps.Polyline({map,path:reverse.path,strokeColor:'#68646e',strokeOpacity:.9,strokeWeight:3,zIndex:5}));}
+    else for(let i=oldIndex;i>selectedIndex;i--){const reverse=await leg(items[i],items[i-1],items[i].transport_mode);if(mine!==epoch)return;parts.push(...reverse.parts);if(reverse.path.length)lines.push(new google.maps.Polyline({map,path:reverse.path,strokeColor:'#68646e',strokeOpacity:.9,strokeWeight:3,zIndex:5}));}
    }
   }else parts=legs.flatMap(l=>l.parts);
-  const firstFlight=options.firstDay&&!flights.has(key)&&(selectedIndex<=0);
-  if(firstFlight){flights.add(key);parts.unshift({path:[{lat:37.4602,lng:126.4407},pos(items[0])],mode:'flight'});}
+  if(Number.isInteger(options.previewLeg)&&selectedIndex>=0)parts=legs[options.previewLeg]?.parts||[];
+  const firstFlight=!Number.isInteger(options.previewLeg)&&options.firstDay&&!flights.has(key)&&(selectedIndex<=0);
+  if(firstFlight){flights.add(key);parts.unshift({path:[pos(items[0]),pos(items[0])],mode:'flight'});}
   if(!parts.length&&selectedIndex<0)parts=[{path:[pos(items[0]),pos(items[0])],mode:'idle'}];
   if(!parts.length)return;
   loop=selectedIndex<0;
   segments=partSegments(parts);
-  if(loop)segments.push({path:[pos(items.at(-1)),pos(items[0])],mode:'jump',duration:900,wait:700});
+  if(loop)segments.push({path:[pos(items.at(-1)),pos(items[0])],mode:'jump',duration:600,wait:300});
   // Flight is a one-time opening, not a real airline itinerary.
-  if(firstFlight)segments[0].duration=3500;
-  const el=document.createElement('div');el.className='captain-journey';el.setAttribute('aria-hidden','true');
-  el.innerHTML='<span class="journey-caption"></span><span class="journey-walk-sprite"></span><img src="./assets/studio/captain-selected.webp" alt=""><span class="journey-vehicle"></span>';
+  if(firstFlight)segments[0].duration=1800;
+  await Promise.all([...new Set(segments.map(s=>s.mode))].map(preload));if(mine!==epoch)return;
+  const el=document.createElement('div');el.className='captain-journey';el.dataset.mode=segments[0].mode;el.setAttribute('aria-hidden','true');
+  el.innerHTML='<span class="journey-caption"></span><span class="journey-walk-sprite"></span><img src="./assets/studio/captain-selected.webp" alt=""><span class="journey-vehicle"></span><span class="journey-transport journey-car"></span><span class="journey-transport journey-plane"></span>';
   marker=new AdvancedMarkerElement({map,position:segments[0].path[0],content:el,zIndex:250});
-  arrive=()=>{document.querySelector('.map-panel')?.classList.remove('captain-in-transit');if(firstFlight){map.panTo(pos(items[0]));map.setZoom(14);}};
+  arrive=()=>{document.querySelector('.map-panel')?.classList.remove('captain-in-transit');};
   if(reduce.matches){marker.map=null;arrive();return;}
   if(selectedIndex>=0)document.querySelector('.map-panel')?.classList.add('captain-in-transit');
-  if(firstFlight){const bounds=new google.maps.LatLngBounds();segments[0].path.forEach(p=>bounds.extend(p));map.fitBounds(bounds,60);}
+
   elapsed=0;frame=requestAnimationFrame(draw);
  }
  document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else if(marker?.map&&segments.length&&!reduce.matches&&!frame)frame=requestAnimationFrame(draw);});
  reduce.addEventListener?.('change',()=>{if(reduce.matches){stop();if(marker)marker.map=null;arrive?.();}});
- window.RouteJourney={update,choose,normalize,samplePath,stop};
+ window.RouteJourney={update,choose,normalize,samplePath,simplify,partSegments,stop};
 })();
