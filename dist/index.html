@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./airy.css">
   <link rel="stylesheet" href="./captain.css">
-  <link rel="stylesheet" href="./studio.css?v=12">
+  <link rel="stylesheet" href="./studio.css?v=13">
 </head>
 <body>
   <div class="app-shell">
@@ -45,11 +45,11 @@
           </div>
         </div>
         <div class="captain-welcome"><img src="./assets/captain/guide-flag.webp" alt="" width="30" height="36"><strong id="captainCountdown" hidden></strong><p id="captainMessage">이번 여행도 함께 짜볼까요?</p></div>
-        <aside id="guestNotice" class="guest-notice" hidden><p id="guestNoticeText"></p><button id="guestSaveButton" type="button">Google 로그인하고 계획 유지</button><button id="guestBackupButton" type="button" hidden>계획 파일로 백업</button></aside><button id="guestFormRecovery" class="guest-recovery" type="button" hidden>입력하던 내용 다시 열기</button>
+        <aside id="guestNotice" class="guest-notice" hidden><p id="guestNoticeText"></p><button id="guestSaveButton" type="button">Google 로그인하고 계획 유지</button></aside><button id="guestFormRecovery" class="guest-recovery" type="button" hidden>입력하던 내용 다시 열기</button>
         <div class="day-tabs" id="dayTabs" role="tablist" aria-label="여행 날짜"></div>
-        <div class="traveler-filter"><label for="travelerFilter">동행별 일정</label><select id="travelerFilter"><option value="all">모두 보기</option></select></div>
+
         <div class="agenda-heading">
-          <span id="itemCount">0개의 일정</span><button id="followCurrentSchedule" type="button" hidden aria-pressed="true">● 실시간 따라가기</button>
+          <span id="itemCount">0개의 일정</span>
         </div>
         <div class="agenda-list" id="agendaList" aria-live="polite"></div>
         <button class="add-schedule-button" type="button" id="addScheduleButton"><span>＋</span> 일정 추가</button>
@@ -68,7 +68,7 @@
           </div>
         </div>
         <div class="captain-map-hint"><span>장소를 눌러 일정에 담아보세요</span></div>
-        <button type="button" id="toggleCaptainMotion" class="captain-motion-button" aria-pressed="true">Ⅱ 움직임 멈춤</button>
+
 
         <aside id="mapPickCard" class="map-pick-card" aria-live="polite" hidden><button id="dismissMapPick" class="pick-dismiss" type="button" aria-label="선택한 장소 닫기">×</button><strong id="mapPickName"></strong><p id="mapPickAddress"></p><button id="addMapPlace" type="button" class="button button-primary">이 장소로 일정 추가</button></aside>
         <div id="routeLegend" class="route-legend" aria-label="동행별 동선"></div>
@@ -141,7 +141,7 @@
     </div>
   </dialog>
 
-  <dialog id="avatarDialog" class="app-dialog airy-dialog avatar-dialog" aria-labelledby="avatarDialogTitle"><header class="dialog-heading"><h2 id="avatarDialogTitle">나를 닮은 얼굴</h2><button class="dialog-close" type="button" aria-label="닫기">×</button></header><div class="avatar-tabs"><button type="button" data-avatar-group="female" aria-pressed="true">여성 225</button><button type="button" data-avatar-group="male" aria-pressed="false">남성 225</button></div><div class="avatar-extra-actions"><button id="editCurrentLook" type="button">현재 캐릭터 꾸미기</button><button id="showNewHair" type="button">새 헤어 25종 보기</button></div><div id="avatarGrid" class="avatar-grid"></div><div class="avatar-pagination"><button type="button" id="avatarPrevious" aria-label="이전 얼굴">←</button><span id="avatarPage"></span><button type="button" id="avatarNext" aria-label="다음 얼굴">→</button></div><p class="avatar-credit">얼굴을 고른 다음 머리색·의상·액세서리를 조합해 보세요.</p></dialog>
+  <dialog id="avatarDialog" class="app-dialog airy-dialog avatar-dialog" aria-labelledby="avatarDialogTitle"><header class="dialog-heading"><h2 id="avatarDialogTitle">나를 닮은 얼굴</h2><button class="dialog-close" type="button" aria-label="닫기">×</button></header><div class="avatar-tabs"><button type="button" data-avatar-group="female" aria-pressed="true">여성 225</button><button type="button" data-avatar-group="male" aria-pressed="false">남성 225</button></div><div class="avatar-extra-actions"><button id="editCurrentLook" type="button">머리색 변경</button><button id="showNewHair" type="button">새 헤어 25종 보기</button></div><div id="avatarGrid" class="avatar-grid"></div><div class="avatar-pagination"><button type="button" id="avatarPrevious" aria-label="이전 얼굴">←</button><span id="avatarPage"></span><button type="button" id="avatarNext" aria-label="다음 얼굴">→</button></div><p class="avatar-credit">얼굴을 고른 다음 머리색을 선택해 보세요.</p></dialog>
 
   <dialog id="inviteDialog" class="app-dialog small-dialog">
     <div class="dialog-heading"><div><p class="eyebrow">SHARE THE ROUTE</p><h2>친구에게 링크 공유하기</h2></div><button class="dialog-close" type="button" aria-label="닫기">×</button></div>
@@ -173,14 +173,14 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <dialog id="lookDialog" class="app-dialog look-dialog" aria-labelledby="lookTitle">
-    <header class="dialog-heading"><div><span class="eyebrow">MY TRAVELER</span><h2 id="lookTitle">나만의 여행자</h2></div><button class="dialog-close" type="button" aria-label="꾸미기 취소">×</button></header>
-    <div class="look-layout"><aside class="look-preview-pane"><img id="lookPreview" alt="꾸민 여행자 미리보기" width="260" height="260"><p id="lookStatus" role="status"></p><div id="hairColors" class="hair-colors" aria-label="머리색"></div><small>기본 의상은 흰색이에요.</small></aside>
-    <div class="look-controls"><div id="lookOptions"></div><details class="look-fit"><summary>위치 미세 조정</summary><label>조정할 소품<select id="lookFitCategory"></select></label><label>좌우<input id="lookFit-x" type="range" min="-12" max="12" value="0"></label><label>높이<input id="lookFit-y" type="range" min="-12" max="12" value="0"></label><label>크기<input id="lookFit-scale" type="range" min="75" max="125" value="100"></label></details></div></div>
-    <footer class="look-footer"><button type="button" id="lookReset" class="button button-secondary">꾸미기 초기화</button><button type="button" id="lookApply" class="button button-primary">이 모습으로 선택</button></footer>
+    <header class="dialog-heading"><div><span class="eyebrow">MY TRAVELER</span><h2 id="lookTitle">머리색 선택</h2></div><button class="dialog-close" type="button" aria-label="머리색 선택 취소">×</button></header>
+    <div class="look-layout"><aside class="look-preview-pane"><img id="lookPreview" alt="머리색 미리보기" width="260" height="260"><p id="lookStatus" role="status"></p><div id="hairColors" class="hair-colors" aria-label="머리색"></div><small>기본 의상은 흰색이에요.</small></aside>
+    </div>
+    <footer class="look-footer"><button type="button" id="lookReset" class="button button-secondary">기본 머리색</button><button type="button" id="lookApply" class="button button-primary">이 모습으로 선택</button></footer>
   </dialog>
   <script src="./avatar-landmarks.js?v=4" defer></script>
-  <script src="./avatar-studio.js?v=4" defer></script>
-  <script src="./captain-map.js?v=4" defer></script>
-  <script type="module" src="./app.js?v=14"></script>
+  <script src="./avatar-studio.js?v=5" defer></script>
+  <script src="./captain-map.js?v=5" defer></script>
+  <script type="module" src="./app.js?v=16"></script>
 </body>
 </html>

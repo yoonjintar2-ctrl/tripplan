@@ -10,10 +10,10 @@ w.HTMLElement.prototype.scrollIntoView=function(){};
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'))};
 const calls={pan:0,markers:[],writes:[],rpc:[],query:[]};
 class LatLng {constructor(lat,lng){this.a=lat;this.b=lng}lat(){return this.a}lng(){return this.b}}
-class FakeMap {constructor(el,opts){this.center=opts.center?.lat instanceof Function?opts.center:new LatLng(opts.center.lat,opts.center.lng);this.zoom=opts.zoom;this.listeners={}}addListener(n,f){this.listeners[n]=f}getCenter(){return this.center}getZoom(){return this.zoom}setZoom(v){this.zoom=v}setCenter(v){this.center=typeof v.lat==='function'?v:new LatLng(v.lat,v.lng)}panTo(v){calls.pan++;this.setCenter(v)}fitBounds(){}}
+class FakeMap {constructor(el,opts){this.center=opts.center?.lat instanceof Function?opts.center:new LatLng(opts.center.lat,opts.center.lng);this.zoom=opts.zoom;this.listeners={};this.mapTypes=new Map()}setMapTypeId(id){this.mapTypeId=id}addListener(n,f){this.listeners[n]=f}getCenter(){return this.center}getZoom(){return this.zoom}setZoom(v){this.zoom=v}setCenter(v){this.center=typeof v.lat==='function'?v:new LatLng(v.lat,v.lng)}panTo(v){calls.pan++;this.setCenter(v)}fitBounds(){}}
 class Marker{constructor(opts){Object.assign(this,opts);this.listeners={};calls.markers.push(this)}addEventListener(n,f){this.listeners[n]=f}}
 class Place{constructor({id}){this.id=id}async fetchFields(){Object.assign(this,{displayName:'선택한 카페',formattedAddress:'London UK',location:new LatLng(51.5,-.12),googleMapsURI:'https://www.google.com/maps/?q=London',photos:[],reviews:[]})}static async searchByText(){return {places:[]}}}
-w.google={maps:{importLibrary:async name=>({Map:FakeMap,AdvancedMarkerElement:Marker,Place,Geocoder:class{async geocode(){return {results:[{formatted_address:'정확한 좌표 주소'}]}}}}),LatLngBounds:class{extend(){}},Polyline:class{setMap(){}},event:{trigger(){}}}};
+w.google={maps:{StyledMapType:class{constructor(styles,opts){this.styles=styles;this.opts=opts}},importLibrary:async name=>({Map:FakeMap,AdvancedMarkerElement:Marker,Place,Geocoder:class{async geocode(){return {results:[{formatted_address:'정확한 좌표 주소'}]}}}}),LatLngBounds:class{extend(){}},Polyline:class{setMap(){}},event:{trigger(){}}}};
 w.createClient=()=>({from(table){const obj={select(){return this},single(){return this},eq(){return this},order(){return this},in(){return this},insert(row){calls.writes.push({table,row});return this},update(row){calls.writes.push({table,row});return this},then(resolve){return Promise.resolve({data:{id:'saved'},error:null}).then(resolve)}};return obj},rpc:async(name,args)=>{calls.rpc.push({name,args});return {data:null,error:null}},auth:{},functions:{}});
 let utils=fs.readFileSync(root+'/dist/travel-utils.js','utf8').replace(/export /g,'');
 let code=fs.readFileSync(root+'/dist/app.js','utf8').replace(/^import .*;\n/gm,'').replace('Promise.allSettled([initMap(), initializeAuth()]);','');
@@ -23,7 +23,26 @@ assert.equal(w.GuestDrafts,undefined);
 vm.runInContext(utils+'\n'+clock+'\n'+code,c);
 const run=s=>vm.runInContext(s,c),el=s=>w.document.querySelector(s),tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{
-assert.equal(el('#manageTripsButton').textContent,'내 계획 시작하기');
+// Begin at the actual Add schedule button before Auth initialization finishes.
+Object.defineProperty(w.crypto,'randomUUID',{value:undefined,configurable:true});
+let finishSession;
+const startupBackend=run('supabase');
+startupBackend.auth.getSession=()=>new Promise(resolve=>{finishSession=resolve});
+startupBackend.auth.onAuthStateChange=()=>{};
+const startup=run('initializeAuth()');
+el('#addScheduleButton').click();
+assert(el('#scheduleDialog').open,'first Add schedule opens the editor, not Google login');
+assert(!el('#accountDialog').open);
+assert.match(run('state.trip.id'),/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+el('#scheduleName').value='첫 화면에서 작성 중';
+el('#scheduleName').dispatchEvent(new w.Event('input',{bubbles:true}));
+const startupId=run('state.trip.id');
+finishSession({data:{session:null},error:null});await startup;
+assert.equal(run('state.trip.id'),startupId);
+assert.equal(el('#scheduleName').value,'첫 화면에서 작성 중','late auth must not reset guest form');
+el('#scheduleDialog').close();
+console.log('PASS: direct first-click creation, delayed Auth, missing randomUUID and unfinished form preservation');
+assert.equal(el('#manageTripsButton').textContent,'여행 관리');
 el('#manageTripsButton').click();
 assert(el('#tripDialog').open,'actual start menu opens without a global GuestDrafts script');
 assert.equal(run('guestWritable()'),true);
@@ -37,6 +56,18 @@ assert.equal(JSON.parse(w.localStorage.getItem(run('GuestDrafts.KEY'))).editor.f
 run('state.guestBook=null;initializeGuest()');assert.equal(el('#scheduleName').value,'비로그인 카페','reload restores unfinished form');
 await run('saveSchedule({preventDefault(){},currentTarget:document.querySelector("#scheduleForm")})');assert.equal(run('state.items[0].name'),'비로그인 카페');assert.equal(calls.writes.length,0,'guest never writes anonymous database rows');
 run('state.items=[];state.guestBook=null;initializeGuest()');assert.equal(run('state.items[0].name'),'비로그인 카페');
+run('openSchedule(state.items[0])');
+el('#scheduleName').value='수정한 게스트 일정';el('#savedMemo').value='메모도 보존';
+el('#settlementEnabled').checked=true;el('#settlementEnabled').dispatchEvent(new w.Event('change',{bubbles:true}));el('#scheduleForm [name="cost"]').value='12000';
+await run('saveSchedule({preventDefault(){},currentTarget:document.querySelector("#scheduleForm")})');
+assert.equal(run('state.items.length'),1);assert.equal(run('state.items[0].memo'),'메모도 보존');assert.equal(run('state.items[0].cost_won'),12000);
+run('openSchedule(state.items[0])');el('#scheduleName').value='비로그인 카페';
+await run('saveSchedule({preventDefault(){},currentTarget:document.querySelector("#scheduleForm")})');
+run('state.mapPickedPlace={displayName:"지도 선택 테스트",formattedAddress:"예시",location:{lat:()=>35,lng:()=>135},googleMapsURI:"https://maps.google.com/?q=35,135"}');
+el('#addMapPlace').click();await tick();
+assert(el('#scheduleDialog').open,'map add opens guest editor');assert(!el('#accountDialog').open);
+el('#scheduleDialog').close();
+console.log('PASS: guest edit, memo, settlement and map-selected place editor');
 // Sample preview never replaces a guest draft or writes demo rows to the server.
 const guestId=run('state.trip.id'), beforeSample=w.localStorage.getItem(run('GuestDrafts.KEY'));
 assert([...el('#tripSelect').options].some(option=>option.value==='sample-seoul-day'));
@@ -82,5 +113,28 @@ await run('signInWithGoogle()');assert.equal(run('Boolean(state.unexpectedOAuth)
 // Public shared trips remain read-only and never become a guest-owned trip.
 run('state.guestMode=false;state.session=null;state.trip={id:"public-trip",owner_id:"someone",title:"공유",start_date:todayString(),end_date:todayString(),categories:[]};');assert.equal(run('canEdit()'),false);run('openSchedule()');assert(el('#accountDialog').open);
 console.log('PASS: anonymous editing, unfinished-form reload, schedule persistence, OAuth cancellation and checkpoint, leave prompt, guest management, quota-blocked login, shared-trip read-only');
+// Pending account transfer must not permanently lock guest editing.
+run(`state.session=null;state.sampleReturn=null;state.guestBook=null;guestStore=new GuestDrafts.Store(localStorage);localStorage.removeItem(GuestDrafts.KEY);initializeGuest();state.trip.travelers.push({id:'friend',nickname:'친구',avatar:'female-001'});state.items=[{id:'stale-item',trip_id:state.trip.id,item_date:state.trip.start_date,name:'복구할 일정',memo:'보존할 메모',cost_won:9000,participant_ids:['friend'],split_ratios:{friend:100}}];commitGuest();state.oldGuestId=state.trip.id;state.guestBook.pending={requestedAt:1,userId:'earlier-account'};writeGuestBook();`);
+run('openSchedule(state.items[0])');assert(el('#scheduleDialog').open);assert(run('guestWritable()'));assert.notEqual(run('state.trip.id'),run('state.oldGuestId'));
+assert.equal(el('#scheduleName').value,'복구할 일정');assert.notEqual(el('#scheduleForm [name="itemId"]').value,'stale-item');
+assert.equal(run('state.items[0].participant_ids[0]'),run('state.trip.travelers[1].id'));assert.equal(run('state.items[0].split_ratios[state.trip.travelers[1].id]'),100);
+assert(w.localStorage.getItem('tripplan-guest-recovery-earlier-account'));
+el('#scheduleDialog').close();
+run('openTripManager()');assert(el('#tripDialog').open);el('#tripDialog').close();
+const originalId=run('state.trip.id'), originalItem=run('state.items[0].id');
+await run(`duplicateTrip(${JSON.stringify(originalId)})`);
+assert.equal(run('state.guestBook.records.length'),2);assert.notEqual(run('state.trip.id'),originalId);assert.notEqual(run('state.items[0].id'),originalItem);
+assert.equal(run('state.items[0].memo'),'보존할 메모');assert.equal(run('state.trip.share_code'),'');assert.equal(run('state.items[0].participant_ids[0]'),run('state.trip.travelers[1].id'));
+run('state.items[0].memo="복사본만 수정";commitGuest()');assert.equal(run('state.guestBook.records[0].items[0].memo'),'보존할 메모');
+assert.equal(el('#guestBackupButton'),null);assert.equal(el('#travelerFilter'),null);assert.equal(el('#toggleCaptainMotion'),null);assert.equal(el('#followCurrentSchedule'),null);assert(el('.agenda-faces img'));
+// Logged-in copies retry the same IDs after an interrupted item upload.
+const copyApi=require('./helpers/guest-cloud.cjs').client();backend.from=copyApi.from;
+run(`state.guestMode=false;state.session={user:{id:'copy-owner'}};state.trip={id:'source-cloud',owner_id:'copy-owner',title:'원본 여행',start_date:'2026-10-01',end_date:'2026-10-01',travelers:[{id:'person',nickname:'나',avatar:'male-001'}]};state.trips=[state.trip];`);
+copyApi.db.mt_trips.set('source-cloud',JSON.parse(run('JSON.stringify(state.trip)')));
+copyApi.db.mt_itinerary_items.set('source-item',{id:'source-item',trip_id:'source-cloud',item_date:'2026-10-01',name:'원본 일정',participant_ids:['person'],split_ratios:{person:100},cost_won:18000,memo:'원본'});
+run(`loadTripList=async()=>{const {data}=await supabase.from('mt_trips').select('*');state.trips=data;};switchTrip=async id=>{state.trip=state.trips.find(t=>t.id===id);state.items=(await supabase.from('mt_itinerary_items').select('*').eq('trip_id',id)).data;};`);
+copyApi.failItems=true;await run('duplicateTrip("source-cloud")');assert.equal(copyApi.db.mt_trips.size,2);assert(w.localStorage.getItem('tripplan-copy-copy-owner-source-cloud'));
+copyApi.failItems=false;await run('duplicateTrip("source-cloud")');assert.equal(copyApi.db.mt_trips.size,2);assert.equal(copyApi.db.mt_itinerary_items.size,2);assert.equal(w.localStorage.getItem('tripplan-copy-copy-owner-source-cloud'),null);assert.equal(run('state.trip.title'),'원본 여행 (복사본)');assert.equal(run('state.items[0].cost_won'),18000);assert.equal(copyApi.db.mt_itinerary_items.get('source-item').memo,'원본');
+console.log('PASS: locked guest recovery, independent guest/account copies, interrupted-copy retry without duplicates and removed controls');
 await tick();dom.window.close();
 })().catch(e=>{console.error(e);dom.window.close();process.exitCode=1});

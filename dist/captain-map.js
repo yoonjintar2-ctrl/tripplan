@@ -6,7 +6,6 @@
   let paused=reduced.matches,selected=false,atlasReady=null;
   function preload(){if(!atlasReady)atlasReady=new Promise((resolve,reject)=>{const image=new Image();image.onload=async()=>{try{await image.decode?.();resolve(image);}catch(e){atlasReady=null;reject(e);}};image.onerror=()=>{atlasReady=null;reject(Error('Captain sprite unavailable'));};image.src=ASSETS+'captain-motion-atlas.webp';});return atlasReady;}
   function setSelected(value){selected=Boolean(value);if(marker)marker.map=selected?null:map;if(selected)stop();else if(marker&&!paused&&!document.hidden&&!frame)frame=requestAnimationFrame(tick);}
-  try{paused=paused||localStorage.getItem('captain-motion')==='paused';}catch{}
   const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
   const position=item=>({lat:Number(item.latitude),lng:Number(item.longitude)});
   function markerContent(item,selected,number){
@@ -20,7 +19,6 @@
   function paint(action,index,direction=1){if(!marker?.content)return;const node=marker.content.querySelector('.captain-sprite');const key=action+index+direction;if(node.dataset.frame===key)return;node.dataset.frame=key;const row={walk:0,map:1,telescope:2}[action];node.style.backgroundPosition=`${index*100/3}% ${row*50}%`;node.style.transform=`scaleX(${direction})`;marker.content.dataset.action=action;}
   function syncControls(){
     document.querySelector('.map-panel')?.classList.toggle('motion-paused',paused);
-    const b=document.getElementById('toggleCaptainMotion');if(b){b.setAttribute('aria-pressed',String(!paused));b.textContent=paused?'▶ 캡틴 산책':'Ⅱ 움직임 멈춤';}
     document.querySelector('.map-panel')?.classList.toggle('captain-has-route',route.length>0);
   }
   function stop(){cancelAnimationFrame(frame);frame=0;lastTime=0;}
@@ -58,9 +56,8 @@
     paint('map',2);if(!paused&&!selected)frame=requestAnimationFrame(tick);
   }
   function init(){
-    document.getElementById('toggleCaptainMotion')?.addEventListener('click',()=>{paused=!paused;try{localStorage.setItem('captain-motion',paused?'paused':'playing');}catch{}syncControls();if(paused)stop();else if(marker&&!selected&&!frame)frame=requestAnimationFrame(tick);});
     document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else if(!paused&&!selected&&marker&&!frame)frame=requestAnimationFrame(tick);});
-    reduced.addEventListener?.('change',e=>{if(e.matches){paused=true;stop();syncControls();}});syncControls();
+    reduced.addEventListener?.('change',e=>{paused=e.matches;if(paused)stop();else if(marker&&!selected&&!frame)frame=requestAnimationFrame(tick);syncControls();});syncControls();
   }
   window.CaptainMap={markerContent,setRoute,setSelected,sample,stop};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();

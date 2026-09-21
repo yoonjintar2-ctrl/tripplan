@@ -8,15 +8,15 @@
       const raw = this.storage.getItem(KEY);
       if (!raw) return {version:1,revision:0,records:[],activeId:null,dirty:false,pending:null,editor:null,importedFor:null};
       const value = JSON.parse(raw);
-      if (value.version !== 1 || !Array.isArray(value.records) || !Number.isInteger(value.revision)) throw new Error('임시 계획을 읽지 못했습니다. 브라우저 데이터를 지우지 말고 백업을 확인해 주세요.');
+      if (value.version !== 1 || !Array.isArray(value.records) || !Number.isInteger(value.revision)) throw new Error('임시 계획을 읽지 못했습니다. 브라우저 데이터를 지우지 말고 이 화면을 유지해 주세요.');
       return value;
     }
     write(value) {
-      if (this.read().revision !== value.revision) throw new Error('다른 탭에서 임시 계획이 바뀌었습니다. 이 탭의 내용을 백업한 뒤 새로고침해 주세요.');
+      if (this.read().revision !== value.revision) throw new Error('다른 탭에서 임시 계획이 바뀌었습니다. 열린 입력창을 닫고 다시 시도해 주세요.');
       const next = {...clone(value),revision:value.revision+1};
       const raw = JSON.stringify(next);
       this.storage.setItem(KEY,raw);
-      if (this.storage.getItem(KEY) !== raw) throw new Error('임시 계획 보관을 확인하지 못했습니다. 로그인 전에 백업해 주세요.');
+      if (this.storage.getItem(KEY) !== raw) throw new Error('임시 계획 보관을 확인하지 못했습니다. 이 화면을 닫지 말고 다시 시도해 주세요.');
       return next;
     }
   }

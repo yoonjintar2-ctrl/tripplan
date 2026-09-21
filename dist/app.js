@@ -9,15 +9,15 @@ const GuestDrafts = (() => {
       const raw = this.storage.getItem(KEY);
       if (!raw) return {version:1,revision:0,records:[],activeId:null,dirty:false,pending:null,editor:null,importedFor:null};
       const value = JSON.parse(raw);
-      if (value.version !== 1 || !Array.isArray(value.records) || !Number.isInteger(value.revision)) throw new Error('임시 계획을 읽지 못했습니다. 브라우저 데이터를 지우지 말고 백업을 확인해 주세요.');
+      if (value.version !== 1 || !Array.isArray(value.records) || !Number.isInteger(value.revision)) throw new Error('임시 계획을 읽지 못했습니다. 브라우저 데이터를 지우지 말고 이 화면을 유지해 주세요.');
       return value;
     }
     write(value) {
-      if (this.read().revision !== value.revision) throw new Error('다른 탭에서 임시 계획이 바뀌었습니다. 이 탭의 내용을 백업한 뒤 새로고침해 주세요.');
+      if (this.read().revision !== value.revision) throw new Error('다른 탭에서 임시 계획이 바뀌었습니다. 열린 입력창을 닫고 다시 시도해 주세요.');
       const next = {...clone(value),revision:value.revision+1};
       const raw = JSON.stringify(next);
       this.storage.setItem(KEY,raw);
-      if (this.storage.getItem(KEY) !== raw) throw new Error('임시 계획 보관을 확인하지 못했습니다. 로그인 전에 백업해 주세요.');
+      if (this.storage.getItem(KEY) !== raw) throw new Error('임시 계획 보관을 확인하지 못했습니다. 이 화면을 닫지 말고 다시 시도해 주세요.');
       return next;
     }
   }
@@ -81,6 +81,17 @@ const won = value => `₩${Math.round(Number(value || 0)).toLocaleString("ko-KR"
 const safe = value => String(value ?? "").replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
+// IDs must also work on browsers without crypto.randomUUID (for example HTTP).
+// This is only an ID generator; it does not weaken OAuth/PKCE requirements.
+function newLocalId() {
+  if(typeof crypto.randomUUID==='function')return crypto.randomUUID();
+  const bytes=crypto.getRandomValues(new Uint8Array(16));
+  bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+function hasSharedTripLink(){const params=new URLSearchParams(location.search);return Boolean(params.get('trip') && params.get('invite'));}
+
 function todayString() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -123,7 +134,7 @@ const state = {
 let guestStore;
 function isGuestTrip(trip=state.trip){return Boolean(state.guestMode && state.guestBook?.records.some(record=>record.trip.id===trip?.id));}
 function guestHasWork(){return Boolean(state.guestBook?.dirty);}
-function guestWritable(){return isGuestTrip() && !state.session && !state.guestBook.pending?.userId && !state.guestConflict;}
+function guestWritable(){return isGuestTrip() && !state.guestImporting && !state.guestBook.pending?.userId && !state.guestConflict;}
 function writeGuestBook(){
   try{state.guestBook=guestStore.write(state.guestBook);state.guestStorageError='';return true;}
   catch(error){state.guestStorageError=error.message || '브라우저에 임시 저장할 공간이 없습니다.';if(/다른 탭/.test(state.guestStorageError))state.guestConflict=true;return false;}
@@ -134,18 +145,17 @@ function refreshGuestNotice(){
   $('#guestNoticeText').textContent=state.guestStorageError || (state.session && guestHasWork()?'계정 저장이 아직 완료되지 않았습니다. 임시 계획은 보관 중이에요. 다시 저장해 주세요.':'로그인하지 않은 계획은 브라우저 데이터 삭제·다른 기기 이동 시 사라질 수 있어요. 계획을 유지하려면 Google 로그인해 주세요.');
   $('#guestSaveButton').textContent=state.session?'계정에 저장 다시 시도':'Google 로그인하고 계획 유지';
   $('#guestSaveButton').disabled=Boolean(state.guestImporting);
-  $('#guestBackupButton').hidden=!state.guestStorageError;
   $('#guestFormRecovery').hidden=!(state.guestBook?.editor && !state.guestRestoring);
   window.removeEventListener('beforeunload',guestBeforeUnload);
   if(guestHasWork())window.addEventListener('beforeunload',guestBeforeUnload);
 }
 function commitGuest(){
-  if(!isGuestTrip() || state.session)return;
+  if(!isGuestTrip())return;
   const record=state.guestBook.records.find(value=>value.trip.id===state.trip.id);
   record.trip=GuestDrafts.clone(state.trip);record.items=GuestDrafts.clone(state.items);
   state.guestBook.activeId=state.trip.id;state.guestBook.dirty=true;
   state.trips=state.guestBook.records.map(value=>({...value.trip,_role:'owner'}));
-  writeGuestBook();setSync(state.guestStorageError?'임시 저장 실패 · 백업 필요':'이 브라우저에 임시 보관 중');refreshGuestNotice();
+  writeGuestBook();setSync(state.guestStorageError?'임시 저장 실패 · 브라우저를 닫지 마세요':'이 브라우저에 임시 보관 중');refreshGuestNotice();
 }
 function loadGuestRecord(id){
   const record=state.guestBook.records.find(value=>value.trip.id===id);if(!record)return;
@@ -159,14 +169,53 @@ function initializeGuest(){
     if(state.guestBook.importedFor){state.guestBook={...state.guestBook,records:[],activeId:null,dirty:false,editor:null,pending:null,importedFor:null};}
     // A canceled OAuth attempt without any cloud writes can still be edited.
     if(state.guestBook.pending && !state.guestBook.pending.userId)state.guestBook.pending=null;
-    state.guestMode=true;
+    state.guestConflict=false;state.guestMode=true;
     if(!state.guestBook.records.length){
-      const trip={...blankTrip(),id:crypto.randomUUID(),title:'나의 여행 계획',travelers:[{id:crypto.randomUUID(),nickname:'나',avatar:'male-001'}]};
+      const trip={...blankTrip(),id:newLocalId(),title:'나의 여행 계획',travelers:[{id:newLocalId(),nickname:'나',avatar:'male-001'}]};
       state.guestBook.records.push({trip,items:[]});state.guestBook.activeId=trip.id;
     }
-    loadGuestRecord(state.guestBook.activeId || state.guestBook.records[0].trip.id);
+    const active=state.guestBook.records.find(record=>record.trip.id===state.guestBook.activeId) || state.guestBook.records[0];
+    state.guestBook.activeId=active.trip.id;
+    if(!writeGuestBook())throw new Error(state.guestStorageError);
+    loadGuestRecord(active.trip.id);
+    if(state.guestBook.pending?.userId && !state.session)recoverGuestEditing();
     setSync(guestHasWork()?'이 브라우저에 임시 보관 중':'로그인 없이 계획을 시작해 보세요');restoreGuestEditor();refreshGuestNotice();
   }catch(error){state.guestStorageError=error.message;showToast(error.message);setSync('임시 계획을 읽지 못했습니다');}
+  return isGuestTrip();
+}
+function copyTripRecord(source, title=source.trip.title) {
+  const tripId=newLocalId(),ids=new Map();
+  const remap=id=>{if(!ids.has(id))ids.set(id,newLocalId());return ids.get(id);};
+  const trip={...GuestDrafts.clone(source.trip),id:tripId,title,owner_id:null,share_code:'',_role:'owner'};
+  delete trip.created_at;delete trip.updated_at;
+  trip.travelers=(trip.travelers||[]).map(person=>({...person,id:remap(person.id)}));
+  const itemIds=new Map();
+  const items=source.items.map(item=>{const id=newLocalId();itemIds.set(item.id,id);const row={...GuestDrafts.clone(item),id,trip_id:tripId,created_by:null,
+    participant_ids:item.participant_ids==null?null:item.participant_ids.map(remap),split_ratios:Object.fromEntries(Object.entries(item.split_ratios||{}).map(([id,value])=>[remap(id),value]))};delete row.created_at;delete row.updated_at;return row;});
+  return {trip,items,ids,itemIds};
+}
+function recoverGuestEditing(){
+  if(!isGuestTrip() || state.guestImporting)return false;
+  try{
+    if(state.guestConflict){
+      if($('#scheduleDialog').open || $('#tripDialog').open)throw new Error('다른 탭에서 계획이 바뀌었습니다. 입력창을 닫고 다시 열어 최신 계획을 불러와 주세요.');
+      const latest=guestStore.read();state.guestBook=latest;state.guestConflict=false;
+      if(!latest.records.length)return initializeGuest();
+      loadGuestRecord(latest.activeId||latest.records[0].trip.id);
+    }
+    if(state.guestBook.pending?.userId){
+      // Preserve the frozen upload checkpoint, then continue on independent local IDs.
+      const old=GuestDrafts.clone(state.guestBook),copies=old.records.map(record=>copyTripRecord(record));
+      localStorage.setItem('tripplan-guest-recovery-'+old.pending.userId,JSON.stringify(old));
+      const index=Math.max(0,old.records.findIndex(record=>record.trip.id===old.activeId));
+      let editor=old.editor;
+      if(editor){const n=old.records.findIndex(record=>record.trip.id===editor.tripId),copy=copies[n];if(copy){editor.tripId=copy.trip.id;if(editor.fields.itemId?.value)editor.fields.itemId.value=copy.itemIds.get(editor.fields.itemId.value)||'';if(editor.fields.tripId?.value)editor.fields.tripId.value=copy.trip.id;editor.participantIds=editor.participantIds?.map(id=>copy.ids.get(id)||id)??null;editor.draftTravelers=editor.draftTravelers?.map(person=>({...person,id:copy.ids.get(person.id)||person.id}));for(const key of Object.keys(editor.fields)){if(key.startsWith('ratio_')&&copy.ids.has(key.slice(6))){editor.fields['ratio_'+copy.ids.get(key.slice(6))]=editor.fields[key];delete editor.fields[key];}}}}
+      state.guestBook={...old,records:copies.map(({trip,items})=>({trip,items})),activeId:copies[index].trip.id,pending:null,importedFor:null,dirty:true,editor};
+      if(!writeGuestBook()){state.guestBook=old;throw new Error(state.guestStorageError);}
+      loadGuestRecord(state.guestBook.activeId);
+    }
+    return guestWritable();
+  }catch(error){showToast(error.message);return false;}
 }
 function captureGuestEditor(){
   if(!state.guestBook || state.guestImporting || state.guestRestoring || (!state.guestMode && !state.guestRecovery))return;
@@ -228,7 +277,6 @@ function bindGuestUI(){
   $('#guestStay').addEventListener('click',()=>$('#guestLeaveDialog').close());
   $('#guestLeaveAnyway').addEventListener('click',()=>{state.guestAllowLeave=true;location.assign(state.guestLeaveHref);});
   $('#guestFormRecovery').addEventListener('click',async()=>{try{const id=state.guestBook?.editor?.tripId;if(id && id!==state.trip.id)await switchTrip(id);restoreGuestEditor();}catch(error){showToast(error.message);}});
-  $('#guestBackupButton').addEventListener('click',()=>{const raw=state.guestBook?JSON.stringify(state.guestBook,null,2):localStorage.getItem(GuestDrafts.KEY);const url=URL.createObjectURL(new Blob([raw],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='travel-plan-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
   document.addEventListener('input',captureGuestEditor);
   document.addEventListener('change',captureGuestEditor);
   document.addEventListener('click',()=>queueMicrotask(captureGuestEditor));
@@ -240,7 +288,7 @@ function bindGuestUI(){
   window.addEventListener('pagehide',captureGuestEditor);
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')captureGuestEditor();});
   window.addEventListener('pageshow',()=>{state.guestOAuthLeaving=false;state.guestAllowLeave=false;});
-  window.addEventListener('storage',event=>{if(event.key===GuestDrafts.KEY && state.guestMode){state.guestConflict=true;state.guestStorageError='다른 탭에서 계획이 변경됐습니다. 이 탭의 내용을 백업한 뒤 새로고침해 주세요.';refreshGuestNotice();}});
+  window.addEventListener('storage',event=>{if(event.key===GuestDrafts.KEY && state.guestMode){state.guestConflict=true;state.guestStorageError='다른 탭에서 계획이 변경됐습니다. 열린 입력창을 닫고 다시 시도해 주세요.';refreshGuestNotice();}});
   for(const kind of ['schedule','trip'])$(`#${kind}Dialog`).addEventListener('close',()=>clearGuestEditor(kind));
 }
 
@@ -404,6 +452,10 @@ function renderTripSwitcher() {
   $("#manageTripsButton").textContent = state.session || state.guestMode ? "여행 관리" : "내 계획 시작하기";
 }
 
+function agendaFaces(item){
+  const people=attendeesFor(item,travelers()),names=people.map(p=>p.nickname).join(' · ');
+  return `<span class="agenda-faces" title="${safe(names)}" aria-label="동행: ${safe(names)}">${people.slice(0,3).map(p=>faceHtml(p,'')).join('')}${people.length>3?`<small>+${people.length-3}</small>`:''}</span>`;
+}
 function render() {
   syncTripClock();
   const dates = dateRange(state.trip.start_date, state.trip.end_date);
@@ -418,7 +470,6 @@ function render() {
     return `<button class="day-tab ${date === state.activeDate ? "active" : ""}" type="button" role="tab" aria-selected="${date === state.activeDate}" data-date="${date}"><span>DAY ${String(index + 1).padStart(2, "0")}</span><strong>${value.getMonth() + 1}월 ${String(value.getDate()).padStart(2, "0")}일 ${new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(value).replace("요일", "")}</strong></button>`;
   }).join("");
   $$("[data-date]").forEach(button => button.addEventListener("click", () => {
-    state.followClock=false;
     state.activeDate = button.dataset.date;
     state.selectedId = null;
     render();
@@ -427,10 +478,9 @@ function render() {
   $("#itemCount").textContent = `${items.length}개의 일정`;
   $("#mapDayLabel").textContent = `DAY ${String(dates.indexOf(state.activeDate) + 1).padStart(2, "0")} · 동선`;
   $("#totalCost").textContent = won(state.items.reduce((sum, item) => sum + (item.settlement_enabled ? Number(item.cost_won || 0) : 0), 0));
-  renderTravelerFilter();
   $("#agendaList").innerHTML = items.length ? items.map(item => {
     const current = isCurrentItem(item, items);
-    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p>${item.participant_ids ? `<div class="agenda-attendees">${attendeesFor(item, travelers()).map(person => faceHtml(person, "")).join("")} ${attendeesFor(item, travelers()).map(person => safe(person.nickname)).join(" · ")}</div>` : ""}</span></button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button></div>`;
+    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p></span>${agendaFaces(item)}</button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button></div>`;
   }).join("") : `<div class="agenda-empty captain-empty"><img src="./assets/captain/guide-map.webp" width="98" height="120" alt="지도를 함께 보는 캡틴비어"><strong>아직 비어 있는 여행 지도</strong><p>가고 싶은 곳 하나로 시작해요.<br>제가 옆에서 함께할게요.</p></div>`;
   $$("[data-item-id]").forEach(button => {
     button.addEventListener("click", () => selectStop(button.dataset.itemId, true));
@@ -448,8 +498,12 @@ function render() {
 }
 
 function syncTripClock(now=new Date()) {
-  if(state.clockTrip!==state.trip.id){state.clockTrip=state.trip.id;state.followClock=true;}
-  if(tripPhase(state.trip,now).mode==='live'&&state.followClock){state.activeDate=clockParts(now).date;state.selectedId=currentSchedule(activeItems(),now)?.item.id||null;}
+  state.followClock=true;
+  const clock=clockParts(now),key=state.trip.id+'|'+clock.date+' '+clock.time;
+  // Manual inspection stays usable; the next clock tick resumes live following.
+  if(state.clockTrip===state.trip.id && state.clockSelectionKey===key)return;
+  state.clockTrip=state.trip.id;state.clockSelectionKey=key;
+  if(tripPhase(state.trip,now).mode==='live'){state.activeDate=clock.date;state.selectedId=currentSchedule(activeItems(),now)?.item.id||null;}
 }
 function isCurrentItem(item,items){return currentSchedule(items)?.item.id===item.id;}
 function renderTripClock(items,now=new Date()) {
@@ -458,14 +512,11 @@ function renderTripClock(items,now=new Date()) {
   $('#captainCountdown').textContent=phase.mode==='upcoming'?`D-${phase.remaining}`:live?'ON AIR':phase.mode==='ended'?'여행 완료':'';
   $('#captainMessage').textContent=phase.mode==='upcoming'?`출발까지 ${phase.remaining}일 남았어요!`:live?`여행 ${phase.day}일차, 지금 함께하고 있어요!`:phase.mode==='ended'?'함께한 여행, 즐거우셨나요?':'이번 여행도 함께 짜볼까요?';
   $('#captainCountdown').hidden=phase.mode==='empty';
-  const follow=$('#followCurrentSchedule');follow.hidden=!live;follow.setAttribute('aria-pressed',String(state.followClock));follow.textContent=state.followClock?'● 실시간 따라가기':'현재 일정으로';
-  follow.title='기기 날짜·시간 기준. 다른 일정 선택 시 따라가기가 잠시 해제됩니다.';
   const list=$('#agendaList');list.classList.toggle('is-timeline',items.length>0);
   $$('.agenda-item',list).forEach((el,index)=>{el.classList.toggle('is-past',items[index].item_date<clock.date||(items[index].item_date===clock.date&&items[index].start_time&&items[index].start_time.slice(0,5)<clock.time&&items[index].id!==current?.item.id));if(items[index].id===current?.item.id){const bar=document.createElement('span');bar.className='schedule-progress';bar.style.width=`${current.progress*100}%`;bar.setAttribute('aria-hidden','true');el.append(bar);}});
   if(live&&state.activeDate===clock.date){const line=document.createElement('div');line.className='schedule-now';line.textContent=`${clock.time} NOW · ${current?'지금 이 일정':'다음 일정을 기다리는 중'}`;const target=current?[...list.querySelectorAll("[data-item-id]")].find(el=>el.dataset.itemId===current.item.id)?.closest('.agenda-item'):[...list.querySelectorAll('.agenda-item')].find((el,index)=>items[index].start_time?.slice(0,5)>clock.time);list.insertBefore(line,target||null);}
 }
-$('#followCurrentSchedule').addEventListener('click',()=>{state.followClock=!state.followClock;render();if(state.followClock){const item=selectedItem();if(item)panMapToItem(item,false);requestAnimationFrame(()=>$('.agenda-item.is-current')?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'}));}});
-function tickTripClock(){const key=clockParts().date+' '+clockParts().time;if(key===state.clockMinute||document.hidden)return;state.clockMinute=key;const before=state.selectedId;render();if(state.followClock&&state.selectedId!==before&&selectedItem())panMapToItem(selectedItem(),false);}
+function tickTripClock(){const key=clockParts().date+' '+clockParts().time;if(key===state.clockMinute||document.hidden)return;state.clockMinute=key;state.clockSelectionKey=null;const before=state.selectedId;render();if(state.followClock&&state.selectedId!==before&&selectedItem())panMapToItem(selectedItem(),false);}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)tickTripClock();});
 function updatePlaceCard(item) {
   const items = activeItems();
@@ -531,15 +582,42 @@ async function loadGoogleMaps() {
   });
   return googleMapsLoad;
 }
+// A separate Google StyledMapType keeps the base map palette independent of
+// the AdvancedMarker map ID. Do not pass MapOptions.styles with a map ID.
+const PASTEL_STYLE = [
+  {elementType:'geometry',stylers:[{color:'#f7f2e8'}]},
+  {elementType:'labels.text.fill',stylers:[{color:'#626970'}]},
+  {elementType:'labels.text.stroke',stylers:[{color:'#fffdf8'}]},
+  {featureType:'landscape.man_made',elementType:'geometry',stylers:[{color:'#f0e9de'}]},
+  {featureType:'landscape.natural',elementType:'geometry',stylers:[{color:'#faf6ef'}]},
+  {featureType:'administrative.land_parcel',elementType:'labels',stylers:[{visibility:'off'}]},
+  {featureType:'poi',elementType:'labels',stylers:[{visibility:'off'}]},
+  {featureType:'poi.park',elementType:'geometry',stylers:[{color:'#dce8d6'}]},
+  {featureType:'poi.park',elementType:'labels.text',stylers:[{visibility:'on'},{color:'#78877e'}]},
+  {featureType:'poi.attraction',elementType:'labels.text',stylers:[{visibility:'on'}]},
+  {featureType:'road',elementType:'geometry.fill',stylers:[{color:'#fffdf8'}]},
+  {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#e7ded0'}]},
+  {featureType:'road.highway',elementType:'geometry.fill',stylers:[{color:'#f6e4b7'}]},
+  {featureType:'road',elementType:'labels.icon',stylers:[{visibility:'off'}]},
+  {featureType:'transit.line',elementType:'geometry',stylers:[{color:'#d7dcdf'}]},
+  {featureType:'transit.station',elementType:'labels',stylers:[{visibility:'on'}]},
+  {featureType:'water',elementType:'geometry',stylers:[{color:'#cfe4e9'}]},
+  {featureType:'water',elementType:'labels.text.fill',stylers:[{color:'#859da9'}]}
+];
+function applyPastelMap(map){
+  map.mapTypes.set('cream_pastel',new google.maps.StyledMapType(PASTEL_STYLE,{name:'크림 파스텔'}));
+  map.setMapTypeId('cream_pastel');
+}
 async function initMap() {
   try {
     await loadGoogleMaps();
     const { Map } = await google.maps.importLibrary("maps");
     state.map = new Map($("#googleMap"), {
-      center: { lat: 35.0116, lng: 135.7681 }, zoom: 13, mapId: "DEMO_MAP_ID",
+      center: { lat: 35.0116, lng: 135.7681 }, zoom: 13, mapId: "DEMO_MAP_ID", renderingType: "RASTER",
       mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
       gestureHandling: "greedy", clickableIcons: true
     });
+    applyPastelMap(state.map);
     state.map.addListener("click", event => handleMainMapClick(event));
     state.mapReady = true;
     renderMap();
@@ -613,7 +691,6 @@ async function panMapToItem(item, animate = true) {
   if ((state.map.getZoom() || 0) < 14) state.map.setZoom(14);
 }
 function selectStop(id, animate = false) {
-  state.followClock=false;
   state.selectedId = id;
   render();
   const item = selectedItem();
@@ -703,6 +780,10 @@ function resetScheduleForm(item = null) {
 }
 function openSchedule(item = null) {
   if(state.sampleReturn)return showToast("샘플은 둘러보기용입니다. 여행 목록에서 내 계획을 선택해 주세요.");
+  // Ordinary visitors can start directly from Add schedule, even while Auth is loading.
+  if(!state.session && !isGuestTrip() && !hasSharedTripLink() && !state.trip.owner_id){
+    if(!initializeGuest())return;
+  }
   if (!state.session && !isGuestTrip()) {
     $("#accountDialog").showModal();
     showToast("공유받은 여행은 로그인 후 수정할 수 있습니다.");
@@ -713,6 +794,7 @@ function openSchedule(item = null) {
     showToast("먼저 여행을 만들어 주세요.");
     return;
   }
+  if(isGuestTrip() && !guestWritable()){const index=item?state.items.findIndex(row=>row.id===item.id):-1;if(!recoverGuestEditing())return;if(index>=0)item=state.items[index]||null;}
   if (!canEdit()) {
     showToast("이 여행은 열람만 가능합니다.");
     return;
@@ -847,7 +929,7 @@ async function saveSchedule(event) {
   if (!row.name) {errorNode.textContent="일정 이름을 입력해 주세요.";return;}
   const itemId = String(data.get("itemId") || "");
   if(isGuestTrip()){
-    const saved={...row,id:itemId||crypto.randomUUID(),sort_order:state.items.find(item=>item.id===itemId)?.sort_order||Date.now()};
+    const saved={...row,id:itemId||newLocalId(),sort_order:state.items.find(item=>item.id===itemId)?.sort_order||Date.now()};
     state.items=itemId?state.items.map(item=>item.id===itemId?saved:item):[...state.items,saved];
     state.activeDate=row.item_date;state.selectedId=saved.id;commitGuest();$('#scheduleDialog').close();render();return;
   }
@@ -1001,7 +1083,7 @@ async function switchTrip(tripId, options = {}) {
   if(tripId===SAMPLE_TRIP_ID){showSampleTrip();return;}
   const wasSample=Boolean(state.sampleReturn);leaveSampleTrip();
   if(wasSample && tripId===state.trip.id)return;
-  if(state.guestMode){if(state.session || state.guestConflict)return;loadGuestRecord(tripId);return;}
+  if(state.guestMode){if(!guestWritable())return;loadGuestRecord(tripId);return;}
   if (!tripId || !state.session) return;
   setSync("여행을 불러오는 중");
   await loadTripData(tripId);
@@ -1079,7 +1161,7 @@ function renderTripList() {
   }
   list.innerHTML = state.trips.map(trip => {
     const role = trip._role === "owner" ? "소유자" : trip._role === "editor" ? "편집 가능" : "열람만";
-    return `<div class="trip-list-item ${trip.id === state.trip.id ? "is-active" : ""}"><button type="button" class="trip-list-main" data-trip-id="${safe(trip.id)}"><span><strong>${safe(trip.title)}</strong><small>${safe(trip.start_date)} — ${safe(trip.end_date)}</small></span><em>${role}</em></button><div class="trip-list-actions"><button type="button" data-load-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 불러오기">불러오기</button><button type="button" class="trip-share-button" data-share-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 링크 공유 설정">🔗 링크</button><button type="button" data-delete-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 삭제하기" ${guestWritable()||trip.owner_id===state.session?.user.id?'':'disabled title="여행 소유자만 삭제할 수 있습니다"'}>삭제하기</button></div></div>`;
+    return `<div class="trip-list-item ${trip.id === state.trip.id ? "is-active" : ""}"><button type="button" class="trip-list-main" data-trip-id="${safe(trip.id)}"><span><strong>${safe(trip.title)}</strong><small>${safe(trip.start_date)} — ${safe(trip.end_date)}</small></span><em>${role}</em></button><div class="trip-list-actions"><button type="button" data-load-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 불러오기">불러오기</button><button type="button" class="trip-share-button" data-share-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 링크 공유 설정">🔗 링크</button><button type="button" data-copy-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 복제하기">복제하기</button><button type="button" data-delete-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 삭제하기" ${guestWritable()||trip.owner_id===state.session?.user.id?'':'disabled title="여행 소유자만 삭제할 수 있습니다"'}>삭제하기</button></div></div>`;
   }).join("");
   $$("[data-trip-id]", list).forEach(button => button.addEventListener("click", async () => {
     if (button.dataset.tripId !== state.trip.id) await switchTrip(button.dataset.tripId);
@@ -1087,6 +1169,7 @@ function renderTripList() {
     resetTripForm(state.trips.find(trip => trip.id === button.dataset.tripId) || state.trip);
   }));
   $$('[data-load-trip]',list).forEach(button=>button.addEventListener('click',async()=>{try{await switchTrip(button.dataset.loadTrip);renderTripList();resetTripForm(state.trip);$('#tripDialog').close();}catch(error){showToast(error.message||'여행을 불러오지 못했습니다.');}}));
+  $$('[data-copy-trip]',list).forEach(button=>button.addEventListener('click',()=>duplicateTrip(button.dataset.copyTrip)));
   $$('[data-delete-trip]',list).forEach(button=>button.addEventListener('click',()=>deleteTrip(button.dataset.deleteTrip)));
   $$("[data-share-trip]", list).forEach(button => button.addEventListener("click", async () => {
     try {
@@ -1114,13 +1197,13 @@ function resetTripForm(trip = null) {
   $("#saveTripButton").hidden = !editable;
   $("#deleteTripButton").hidden = !isExisting || role !== "owner";
   $("#tripFormError").textContent = "";
-  state.draftTravelers = isExisting ? travelersFor(trip,state.members).map(person=>({...person})) : [{id:state.session?.user.id || crypto.randomUUID(),nickname:state.session?.user.user_metadata?.full_name || "나",avatar:"male-001"}];
+  state.draftTravelers = isExisting ? travelersFor(trip,state.members).map(person=>({...person})) : [{id:state.session?.user.id || newLocalId(),nickname:state.session?.user.user_metadata?.full_name || "나",avatar:"male-001"}];
   state.rosterEditable=editable; renderDraftTravelers();
 }
 function openTripManager(createNew = false) {
   leaveSampleTrip();
-  if (!state.session && !state.guestMode) { clearShareParameters(); initializeGuest(); }
-  if(state.guestMode && !guestWritable())return showToast("임시 계획을 계정에 저장한 뒤 편집해 주세요.");
+  if (!state.session && !isGuestTrip()) { clearShareParameters(); if(!initializeGuest())return; }
+  if(state.guestMode && !guestWritable() && !recoverGuestEditing())return;
   renderTripList();
   resetTripForm(createNew || !state.trip.id ? null : state.trips.find(trip => trip.id === state.trip.id) || state.trip);
   if (!$("#tripDialog").open) $("#tripDialog").showModal();
@@ -1154,7 +1237,7 @@ async function saveTrip(event) {
       }
       record.trip={...old,title,start_date:startDate,end_date:endDate,travelers:roster};
     }else{
-      record={trip:{...blankTrip(),id:crypto.randomUUID(),title,start_date:startDate,end_date:endDate,travelers:roster},items:[]};state.guestBook.records.push(record);
+      record={trip:{...blankTrip(),id:newLocalId(),title,start_date:startDate,end_date:endDate,travelers:roster},items:[]};state.guestBook.records.push(record);
     }
     loadGuestRecord(record.trip.id);commitGuest();$('#tripDialog').close();render();return;
   }
@@ -1195,6 +1278,35 @@ async function saveTrip(event) {
   await switchTrip(trip.id);
   $("#tripDialog").close();
   showToast("빈 여행을 만들었습니다. 첫 일정을 추가해 보세요.");
+}
+async function duplicateTrip(tripId){
+  if(state.duplicating)return;
+  const source=state.trips.find(trip=>trip.id===tripId);if(!source)return;
+  state.duplicating=true;
+  try{
+    if(state.guestMode){
+      if(!guestWritable()&&!recoverGuestEditing())return;
+      const record=state.guestBook.records.find(r=>r.trip.id===tripId);if(!record)throw new Error('최신 여행 목록에서 다시 선택해 주세요.');
+      const {trip,items}=copyTripRecord(record,record.trip.title+' (복사본)');
+      state.guestBook.records.push({trip,items});state.guestBook.activeId=trip.id;state.guestBook.dirty=true;
+      if(!writeGuestBook())throw new Error(state.guestStorageError);
+      loadGuestRecord(trip.id);
+    }else{
+      const userId=state.session?.user.id;if(!userId)throw new Error('여행을 불러온 뒤 다시 시도해 주세요.');
+      const key=`tripplan-copy-${userId}-${tripId}`;
+      const store=new GuestDrafts.Store({getItem:()=>localStorage.getItem(key),setItem:(_,value)=>localStorage.setItem(key,value)});
+      let book=store.read();
+      if(!book.records.length){
+        const result=await supabase.from('mt_itinerary_items').select('*').eq('trip_id',tripId);if(result.error)throw result.error;
+        const {trip,items}=copyTripRecord({trip:source,items:result.data||[]},source.title+' (복사본)');
+        book=store.write({...book,records:[{trip,items}],activeId:trip.id,dirty:true,pending:{requestedAt:Date.now(),userId}});
+      }
+      book=await GuestDrafts.transfer(supabase,store,book,userId,()=>state.session?.user.id===userId);
+      await loadTripList();await switchTrip(book.activeId);localStorage.removeItem(key);
+    }
+    renderTripList();resetTripForm(state.trip);showToast('여행을 복제했습니다. 복사본을 자유롭게 수정하세요.');
+  }catch(error){showToast('복제를 완료하지 못했습니다. 같은 여행의 복제하기를 다시 누르면 이어서 처리합니다. '+(error.message||''));}
+  finally{state.duplicating=false;}
 }
 async function deleteTrip(targetId) {
   const tripId=typeof targetId==='string'?targetId:$('#tripForm').elements.tripId.value;
@@ -1246,11 +1358,14 @@ async function signInWithGoogle() {
     if(!state.guestBook)state.guestBook=guestStore.read();
     captureGuestEditor();
     if(guestHasWork()){
-      if(state.guestConflict)throw new Error('다른 탭과 충돌했습니다. 임시 계획을 백업하고 새로고침해 주세요.');
+      if(state.guestConflict)throw new Error('다른 탭과 충돌했습니다. 열린 입력창을 닫고 다시 시도해 주세요.');
       state.guestBook.pending ||= {requestedAt:Date.now(),userId:null};
       if(!writeGuestBook())throw new Error('로그인 이동 전에 임시 저장하지 못했습니다. '+state.guestStorageError);
     }
     if(state.session){await restoreWorkspace();return;}
+    if(location.protocol!=='https:' && !['localhost','127.0.0.1'].includes(location.hostname)){
+      throw new Error('Google 로그인은 HTTPS 주소에서 시작해 주세요. 현재 계획은 이 주소의 브라우저에 보관 중입니다.');
+    }
     const {data,error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:authRedirectUrl(location.href),skipBrowserRedirect:true}});
     if(error)throw error;if(!data?.url)throw new Error('로그인 주소를 받지 못했습니다. 다시 시도해 주세요.');
     // A second verified synchronous write immediately before leaving for Google.
@@ -1329,7 +1444,10 @@ async function initializeAuth() {
   const callbackURL=new URL(location.href);
   const fragment=new URLSearchParams(callbackURL.hash.slice(1));
   const hadCallback=callbackURL.searchParams.has('code') || callbackURL.searchParams.has('error') || fragment.has('error');
-  const { data, error } = await supabase.auth.getSession();
+  let data, error;
+  try{({data,error}=await supabase.auth.getSession());}
+  catch(failure){error=failure;}
+
   if (error) setSync("로그인 상태를 확인하지 못했습니다");
   state.session = data?.session || null;
   updateAccountUI();
@@ -1338,7 +1456,7 @@ async function initializeAuth() {
   } else {
     try {
       const shared = await loadPublicSharedTrip();
-      if (!shared) {
+      if (!shared && !isGuestTrip() && !state.sampleReturn) {
         initializeGuest();
       }
     } catch (shareError) {
@@ -1368,7 +1486,6 @@ async function initializeAuth() {
 function travelers(){return travelersFor(state.trip,state.members);}
 function avatarUrl(person){const key=/^(male|female)-(00[1-9]|0[1-9]\d|1\d\d|200)$/.test(person.avatar || '') ? person.avatar : 'male-001';return `./assets/avatars-clay/${key}.webp`;}
 function faceHtml(person,alt=person.nickname){const data={avatar:person.avatar,appearance:person.appearance};return `<img class="traveler-face" src="${window.CaptainStudio?.sourceFor(person)||avatarUrl(person)}" data-traveler-look="${safe(JSON.stringify(data))}" alt="${safe(alt)}" width="38" height="38">`;}
-function renderTravelerFilter(){const select=$("#travelerFilter");const people=travelers();if(!people.some(p=>p.id===state.travelerFilter))state.travelerFilter='all';select.innerHTML='<option value="all">모두 보기</option>'+people.map(person=>`<option value="${safe(person.id)}">${safe(person.nickname)}</option>`).join('');select.value=state.travelerFilter;}
 function renderAttendeeSummary(){const people=attendeesFor({participant_ids:state.participantIds},travelers());$("#attendeeSummary").innerHTML=`<div class="face-stack">${people.slice(0,4).map(person=>faceHtml(person)).join('')}</div><div><strong>${people.length}명 ${state.participantIds == null ? '모두 함께' : '함께'}</strong><small>${people.map(person=>safe(person.nickname)).join(' · ')}</small></div><span class="attendee-badge">${state.participantIds == null ? '전원 참석' : '개별 일정'}</span>`;}
 function openAttendees(){const people=travelers();$("#attendEveryone").checked=state.participantIds==null;$("#attendeeOptions").innerHTML=people.map(person=>`<label class="attendee-choice">${faceHtml(person,'')}<span>${safe(person.nickname)}</span><input type="checkbox" value="${safe(person.id)}" ${state.participantIds==null || state.participantIds.includes(person.id) ? 'checked' : ''}></label>`).join('');$("#attendeeError").textContent='';$$("input",$("#attendeeOptions")).forEach(input=>input.addEventListener('change',()=>{$("#attendEveryone").checked=false;}));$("#attendeeDialog").showModal();}
 function renderDraftTravelers(){const editable=state.rosterEditable;$("#travelerCount").textContent=`${state.draftTravelers.length}명`;$("#addTraveler").hidden=!editable;$("#travelerList").innerHTML=state.draftTravelers.map(person=>`<div class="traveler-row"><button type="button" class="traveler-avatar-button" data-change-avatar="${safe(person.id)}" aria-label="${safe(person.nickname || '여행자')} 얼굴 선택" ${editable?'':'disabled'}>${faceHtml(person,'선택한 캐릭터')}</button><input data-nickname="${safe(person.id)}" aria-label="여행 인원 닉네임" value="${safe(person.nickname)}" placeholder="닉네임" maxlength="40" ${editable?'':'disabled'}><button type="button" class="remove-traveler" data-remove-traveler="${safe(person.id)}" aria-label="${safe(person.nickname || '여행자')} 인원 삭제" ${editable?'':'disabled'}>×</button></div>`).join('');
@@ -1378,7 +1495,7 @@ function renderDraftTravelers(){const editable=state.rosterEditable;$("#traveler
 }
 function editAvatarLook(selection=null){
   const person=state.draftTravelers.find(p=>p.id===state.avatarPerson);if(!person)return;
-  if(!window.CaptainStudio)return showToast('꾸미기 화면을 불러오는 중입니다. 잠시 후 다시 눌러주세요.');
+  if(!window.CaptainStudio)return showToast('머리색 선택 화면을 불러오는 중입니다. 잠시 후 다시 눌러주세요.');
   CaptainStudio.open(selection||person,value=>{person.avatar=value.avatar;person.appearance=value.appearance;renderDraftTravelers();$('#avatarDialog').close();});
 }
 function renderAvatarGrid(){
@@ -1478,9 +1595,10 @@ async function renderEditorMap(place = null, results = []) {
     if (!state.editorMap) {
       state.editorMap = new Map($('#editorMap'), {
         center: position || state.map?.getCenter() || { lat: 37.5665, lng: 126.9780 },
-        zoom: 14, mapId: 'DEMO_MAP_ID', mapTypeControl: false, streetViewControl: false,
+        zoom: 14, mapId: 'DEMO_MAP_ID', renderingType: 'RASTER', mapTypeControl: false, streetViewControl: false,
         fullscreenControl: false, gestureHandling: 'cooperative', clickableIcons: true
       });
+      applyPastelMap(state.editorMap);
       state.editorMap.addListener('click', event => handleEditorMapClick(event));
     }
     google.maps.event.trigger(state.editorMap, 'resize');
@@ -1674,11 +1792,10 @@ $("#openCategoryManager").addEventListener("click",()=>{closeCategoryMenu();$("#
 $("#openAttendees").addEventListener("click",openAttendees);
 $("#attendEveryone").addEventListener("change",event=>{if(event.target.checked)$$("input",$("#attendeeOptions")).forEach(input=>{input.checked=true;});});
 $("#saveAttendees").addEventListener("click",()=>{const selected=$$("input:checked",$("#attendeeOptions")).map(input=>input.value);if(!selected.length){$("#attendeeError").textContent="한 명 이상 선택해 주세요.";return;}state.participantIds=$("#attendEveryone").checked?null:selected;renderAttendeeSummary();renderRatioFields();toggleSettlement($("#settlementEnabled").checked);$("#attendeeDialog").close();});
-$("#addTraveler").addEventListener("click",()=>{if(state.draftTravelers.length>=100)return showToast("최대 100명까지 추가할 수 있습니다.");state.draftTravelers.push({id:crypto.randomUUID(),nickname:"",avatar:`female-${String(state.draftTravelers.length%200+1).padStart(3,'0')}`});renderDraftTravelers();$$("[data-nickname]").at(-1)?.focus();});
+$("#addTraveler").addEventListener("click",()=>{if(state.draftTravelers.length>=100)return showToast("최대 100명까지 추가할 수 있습니다.");state.draftTravelers.push({id:newLocalId(),nickname:"",avatar:`female-${String(state.draftTravelers.length%200+1).padStart(3,'0')}`});renderDraftTravelers();$$("[data-nickname]").at(-1)?.focus();});
 $$('[data-avatar-group]').forEach(button=>button.addEventListener('click',()=>{state.avatarGroup=button.dataset.avatarGroup;state.avatarPage=0;renderAvatarGrid();}));
 $("#avatarPrevious").addEventListener("click",()=>{state.avatarPage=Math.max(0,state.avatarPage-1);renderAvatarGrid();});
 $("#avatarNext").addEventListener("click",()=>{state.avatarPage=Math.min(8,state.avatarPage+1);renderAvatarGrid();});
-$("#travelerFilter").addEventListener("change",event=>{state.travelerFilter=event.target.value;state.selectedId=null;render();});
 $("#placeSearchInput").addEventListener("keydown",event=>{if(event.key==='Enter'){event.preventDefault();clearTimeout(placeSearchTimer);searchGooglePlaces(event.target.value);}if(event.key==='Escape'){$("#placeSearchResults").hidden=true;event.stopPropagation();}});
 $("#scheduleDialog").addEventListener("close",()=>{state.placeResolveRequest++;state.editorMapRequest++;clearTimeout(placeSearchTimer);clearEditorMarkers();closeCategoryMenu();});
 $("#scheduleDialog").addEventListener("click",event=>{if(!event.target.closest('.category-picker'))closeCategoryMenu();});

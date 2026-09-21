@@ -1,29 +1,15 @@
-/* Avatar composition is local. Only the selected IDs and adjustments are saved. */
+/* Local hair-color rendering. Legacy clothing/accessory settings are ignored. */
 (() => {
   'use strict';
   const SIZE = 448, cache = new Map(), images = new Map();
   const BASE = './assets/studio/';
   const prepared=new Map();
-  const CATALOG = [
-    ['glasses','안경',[['sunglasses','선글라스'],['square-glasses','사각안경'],['gold-glasses','금테안경'],['rimless-glasses','무테안경']]],
-    ['outfit','의상',[['hoodie','후디'],['shirt','셔츠'],['dress','드레스'],['offshoulder','오프숄더'],['power-shoulder','파워숄더'],['leather','가죽재킷'],['denim','청재킷']]],
-    ['hat','모자',[['beret','화가모자'],['newsboy','빵모자'],['straw','밀짚모자'],['beanie','비니'],['head-sunglasses','머리에 올린 선글라스']]],
-    ['earrings','귀걸이',[['hoop','링귀걸이'],['diamond','작은 큐빅 귀걸이']]],
-    ['neck','목',[['scarf','머플러']]],
-    ['ears','귀',[['earmuffs','양털 귀마개']]],
-    ['makeup','메이크업',[['shadow','섀도우 화장']]]
-  ];
   const COLORS = [['original','기본','#292525'],['yellow','노랑','#e3bc60'],['brown','갈색','#835336'],['white','흰색','#eeeae5']];
-  const allowed = Object.fromEntries(CATALOG.map(([id,,options]) => [id, new Set(options.map(x=>x[0]))]));
   const clamp = (x,a,b) => Math.max(a,Math.min(b,Number(x)||0));
   const clean = value => {
-    const source = value && typeof value === 'object' ? value : {}, result = {hair:COLORS.some(x=>x[0]===source.hair)?source.hair:'original',adjustments:{}};
-    if (/^extra-(female|male)-(00[1-9]|01\d|02[0-5])$/.test(source.variant || '')) result.variant=source.variant;
-    for(const [category] of CATALOG) {
-      if(allowed[category].has(source[category])) result[category]=source[category];
-      const a=source.adjustments?.[category];
-      if(a)result.adjustments[category]={x:clamp(a.x,-.12,.12),y:clamp(a.y,-.12,.12),scale:clamp(a.scale||1,.75,1.25)};
-    }
+    const source=value && typeof value==='object'?value:{};
+    const result={hair:COLORS.some(x=>x[0]===source.hair)?source.hair:'original'};
+    if(/^extra-(female|male)-(00[1-9]|01\d|02[0-5])$/.test(source.variant||''))result.variant=source.variant;
     return result;
   };
   const keyFor = person => /^(female|male)-(00[1-9]|0[1-9]\d|1\d\d|200)$/.test(person?.avatar||'')?person.avatar:'male-001';
@@ -92,99 +78,69 @@
       return {raw,pixels,a,scale,dx,dy};
     })();prepared.set(source,job);job.catch(()=>prepared.delete(source));if(prepared.size>36)prepared.delete(prepared.keys().next().value);return job;
   }
+  // Gaussian feathering has a continuous edge on both sides of the hair mask.
+  // Color confidence excludes warm skin so the forehead keeps its original tone.
+  function featherMask(mask,w,h,radius=7){
+    const kernel=Array.from({length:radius*2+1},(_,i)=>Math.exp(-((i-radius)**2)/(2*(radius/2.4)**2)));
+    const sum=kernel.reduce((a,b)=>a+b,0);for(let i=0;i<kernel.length;i++)kernel[i]/=sum;
+    const temp=new Float32Array(w*h),out=new Float32Array(w*h);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let k=-radius;k<=radius;k++)temp[y*w+x]+=mask[y*w+Math.max(0,Math.min(w-1,x+k))]*kernel[k+radius];
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++)for(let k=-radius;k<=radius;k++)out[y*w+x]+=temp[Math.max(0,Math.min(h-1,y+k))*w+x]*kernel[k+radius];
+    return out;
+  }
   async function compose(person) {
-    const look=clean(person.appearance),id=sourceFor(person)+'|4|'+JSON.stringify(look);
+    const look=clean(person.appearance),id=sourceFor(person)+'|5|'+JSON.stringify(look);
     if(cache.has(id))return cache.get(id);
     const pending=(async()=>{
-      const base=await prepare(person),{raw,scale,dx,dy}=base,original=base.pixels,a={...base.a},c=canvas(),ctx=c.getContext('2d');
-      for(const k of ['cx','eyeX','eyeL','eyeR','neckX'])a[k]=dx+a[k]*scale;
-      for(const k of ['eyeY','faceTop','neckY','chinY','hairTop'])a[k]=dy+a[k]*scale;
-      for(const k of ['fw','hw','eyeDistance','neckWidth'])a[k]*=scale;
-      const colored=canvas(),cc=colored.getContext('2d'),p=cc.createImageData(SIZE,SIZE);p.data.set(original.data);
-      const hairLayer=canvas(),hc=hairLayer.getContext('2d'),hp=hc.createImageData(SIZE,SIZE),neckLayer=canvas(),nc=neckLayer.getContext('2d'),np=nc.createImageData(SIZE,SIZE);
-      const target={yellow:[232,190,87],brown:[139,87,48],white:[243,238,229]}[look.hair],mask=base.a.mask;
-      // A 5px soft root transition replaces the old hard color boundary.
-      const blendAt=(x,y)=>{let weight=0,sum=0;for(let oy=-2;oy<=2;oy++)for(let ox=-2;ox<=2;ox++){const px=x+ox,py=y+oy;if(px<0||px>=SIZE||py<0||py>=SIZE)continue;const w=(3-Math.abs(ox))*(3-Math.abs(oy));sum+=w;weight+=mask[py*SIZE+px]*w;}return weight/sum;};
-      for(let y=0;y<SIZE;y++)for(let x=0;x<SIZE;x++){
-        const i=y*SIZE+x,k=i*4,r=original.data[k],g=original.data[k+1],b=original.data[k+2];
-        const faceInterior=y/SIZE>base.a.eyeY-.11&&y/SIZE<base.a.chinY&&x/SIZE>base.a.eyeL-.035&&x/SIZE<base.a.eyeR+.035;
-        let alpha=0;if(!faceInterior&&mask[i])alpha=blendAt(x,y);
-        if(alpha>0){if(target){const lum=(r+g+b)/3,shade=.43+.57*Math.pow(clamp(lum/120,0,1),.65);for(let z=0;z<3;z++)p.data[k+z]=Math.round(original.data[k+z]*(1-alpha)+target[z]*shade*alpha);}for(let z=0;z<3;z++)hp.data[k+z]=p.data[k+z];hp.data[k+3]=Math.round(alpha*255);}
-        const skin=r>100&&r-g>7&&g-b>4&&r-b<155;
-        if(skin&&!mask[i]&&y/SIZE<=base.a.neckY+.006){for(let z=0;z<4;z++)np.data[k+z]=original.data[k+z];}
-      }
-      cc.putImageData(p,0,0);hc.putImageData(hp,0,0);nc.putImageData(np,0,0);
-      const drawLayer=layer=>ctx.drawImage(layer,dx*SIZE,dy*SIZE,scale*SIZE,scale*SIZE);
-      ctx.fillStyle='#fff';ctx.fillRect(0,0,SIZE,SIZE);drawLayer(colored);
-      const placements=[];
-      const sprite=async(name,category,x,y,width,height,options={})=>{
-        if(!name)return;
-        const im=await load(BASE+(name==='head-sunglasses'?'sunglasses':name)+'.webp?v=4'),adj=look.adjustments[category]||{x:0,y:0,scale:1};
-        width*=adj.scale;height=(height||width*im.height/im.width)*(height?adj.scale:1);
-        const left=(x+adj.x-width/2)*SIZE,top=(y+adj.y)*SIZE;
-        ctx.save();
-        if(options.frontCollar){ctx.beginPath();ctx.rect(0,0,SIZE,SIZE);ctx.rect(left+width*SIZE*.30,top-1,width*SIZE*.40,height*SIZE*.13+1);ctx.clip('evenodd');}
-        if(options.tilt){ctx.translate((x+adj.x)*SIZE,top+height*SIZE*.5);ctx.rotate(options.tilt);ctx.drawImage(im,-width*SIZE/2,-height*SIZE/2,width*SIZE,height*SIZE);}
-        else ctx.drawImage(im,left,top,width*SIZE,height*SIZE);
-        ctx.restore();placements.push({name,category,x:x+adj.x,y:y+adj.y,width,height});
-      };
-      if(look.outfit){
-        // Remove the old shirt behind the new garment, preserving the face and hair later.
-        const cut=a.chinY+.025;ctx.fillStyle='#fff';ctx.fillRect(0,cut*SIZE,SIZE,(1-cut)*SIZE);
-        if(['dress','offshoulder'].includes(look.outfit)){
-          const y=a.neckY-.035,skin=ctx.createLinearGradient(0,y*SIZE,0,SIZE);skin.addColorStop(0,'#f2d5c1');skin.addColorStop(1,'#dfbca5');ctx.fillStyle=skin;
-          ctx.beginPath();ctx.moveTo((a.neckX-a.neckWidth*.45)*SIZE,y*SIZE);ctx.lineTo((a.neckX+a.neckWidth*.45)*SIZE,y*SIZE);ctx.bezierCurveTo((a.neckX+.14)*SIZE,(y+.055)*SIZE,(a.neckX+.34)*SIZE,(y+.025)*SIZE,(a.neckX+.40)*SIZE,(y+.14)*SIZE);ctx.lineTo((a.neckX+.43)*SIZE,SIZE);ctx.lineTo((a.neckX-.43)*SIZE,SIZE);ctx.bezierCurveTo((a.neckX-.40)*SIZE,(y+.09)*SIZE,(a.neckX-.17)*SIZE,(y+.06)*SIZE,(a.neckX-a.neckWidth*.45)*SIZE,y*SIZE);ctx.closePath();ctx.fill();
+      const base=await prepare(person),c=canvas(),ctx=c.getContext('2d'),original=base.pixels;
+      const p=ctx.createImageData(SIZE,SIZE);p.data.set(original.data);
+      const target={yellow:[232,190,87],brown:[139,87,48],white:[243,238,229]}[look.hair];
+      if(target){
+        const mask=base.a.mask,soft=featherMask(mask,SIZE,SIZE);
+        for(let y=0;y<SIZE;y++)for(let x=0;x<SIZE;x++){
+          const i=y*SIZE+x,k=i*4,r=original.data[k],g=original.data[k+1],b=original.data[k+2];
+          if(!original.data[k+3]||soft[i]<.002)continue;
+          const skin=clamp((r-105)/65,0,1)*clamp((r-g-8)/18,0,1)*clamp((g-b-3)/12,0,1);
+          const confidence=mask[i]?1:clamp((180-Math.max(r,g,b))/50,0,1);
+          // Keep eyes and eyebrows unchanged even when their dark pixels touch hair.
+          const eyeY=base.a.eyeY-.018,rx=Math.max(.06,base.a.eyeDistance*.30),ry=.085;
+          const d=Math.min(...[base.a.eyeL,base.a.eyeR].map(ex=>Math.hypot((x/SIZE-ex)/rx,(y/SIZE-eyeY)/ry)));
+          const eyeFade=clamp((d-.9)/.35,0,1);
+          const alpha=clamp(soft[i]*1.08,0,1)*confidence*(1-skin)*eyeFade;
+          const lum=(r+g+b)/3,shade=.43+.57*Math.pow(clamp(lum/120,0,1),.65);
+          for(let z=0;z<3;z++)p.data[k+z]=Math.round(original.data[k+z]*(1-alpha)+target[z]*shade*alpha);
         }
-        const top=look.outfit==='offshoulder'?a.neckY+.04:a.neckY-(look.outfit==='shirt'?.10:.065);
-        await sprite(look.outfit,'outfit',a.neckX,top,.84,1.055-top,{frontCollar:!['dress','offshoulder'].includes(look.outfit)});
-        drawLayer(neckLayer);drawLayer(hairLayer);
       }
-      if(look.neck){await sprite(look.neck,'neck',a.neckX,a.neckY-.07,a.neckWidth*2.2,.23,{frontCollar:true});drawLayer(neckLayer);drawLayer(hairLayer);}
-      if(look.makeup==='shadow')for(const x of [a.eyeL,a.eyeR]){const y=(a.eyeY-.025)*SIZE,r=a.eyeDistance*.24*SIZE,g=ctx.createRadialGradient(x*SIZE,y,0,x*SIZE,y,r);g.addColorStop(0,'rgba(143,91,95,.25)');g.addColorStop(1,'rgba(143,91,95,0)');ctx.fillStyle=g;ctx.fillRect(x*SIZE-r,y-r,r*2,r*2);}
-      if(look.earrings)for(const sign of [-1,1])await sprite(look.earrings,'earrings',a.eyeX+sign*a.fw*.47,a.eyeY+a.fw*.20,look.earrings==='hoop'?a.fw*.11:a.fw*.052,look.earrings==='hoop'?a.fw*.15:a.fw*.052);
-      await sprite(look.ears,'ears',a.eyeX,Math.max(.01,a.hairTop),a.fw*1.36,a.eyeY-a.hairTop+a.fw*.40);
-      if(look.hat){const im=await load(BASE+(look.hat==='head-sunglasses'?'sunglasses':look.hat)+'.webp?v=4'),width=look.hat==='head-sunglasses'?a.eyeDistance*1.85:Math.min(.91,Math.max(a.hw*.92,a.fw*(look.hat==='beanie'?1.13:1.24))),height=width*im.height/im.width,fittedHeight=look.hat==='head-sunglasses'?height:Math.min(height,a.eyeY-.12),top=look.hat==='head-sunglasses'?Math.max(.025,a.faceTop-.14):Math.max(.012,a.eyeY-.105-fittedHeight);await sprite(look.hat,'hat',a.eyeX,top,width,fittedHeight);}
-      if(look.glasses){const im=await load(BASE+look.glasses+'.webp?v=4'),width=a.eyeDistance/.53,height=width*im.height/im.width;await sprite(look.glasses,'glasses',a.eyeX,a.eyeY-height*.50,width,height,{tilt:a.eyeTilt});}
-      return {url:c.toDataURL('image/webp',.94),anchors:{...a,mask:undefined},placements};
+      ctx.putImageData(p,0,0);
+      return {url:c.toDataURL('image/webp',.94),anchors:{...base.a,mask:undefined},placements:[]};
     })();cache.set(id,pending);pending.catch(()=>cache.delete(id));if(cache.size>180)cache.delete(cache.keys().next().value);return pending;
   }
   function decorate(root=document) {
     const nodes=[...(root.matches?.('img[data-traveler-look]')?[root]:[]),...root.querySelectorAll?.('img[data-traveler-look]')||[]];
     for(const img of nodes){const stamp=img.dataset.travelerLook;if(img.dataset.renderedLook===stamp)continue;img.dataset.renderedLook=stamp;try{const person=JSON.parse(stamp);compose(person).then(({url})=>{if(img.dataset.travelerLook===stamp)img.src=url;}).catch(()=>{img.title='캐릭터 이미지 로딩 중 — 다시 열어주세요';});}catch{}}
   }
-  let draft=null,apply=null,activeCategory='glasses',previewRequest=0;
+  let draft=null,apply=null,previewRequest=0;
   const $=id=>document.getElementById(id);
   function updatePreview() {
     const request=++previewRequest;
-    $('lookStatus').textContent='스타일을 입히는 중…';
+    $('lookStatus').textContent='머리색 적용 중…';
     compose(draft).then(({url})=>{if(request!==previewRequest)return;$('lookPreview').src=url;$('lookStatus').textContent='';}).catch(()=>{if(request===previewRequest)$('lookStatus').textContent='이미지 로딩에 실패했습니다. 다른 옵션을 눌러 다시 시도해 주세요.';});
-    document.querySelectorAll('[data-look-option]').forEach(b=>b.setAttribute('aria-pressed',String((draft.appearance[b.dataset.lookCategory]||'')===b.dataset.lookOption)));
     document.querySelectorAll('[data-hair-color]').forEach(b=>b.setAttribute('aria-pressed',String(draft.appearance.hair===b.dataset.hairColor)));
-  }
-  function adjustmentUI() {
-    const adj=draft.appearance.adjustments[activeCategory]||{x:0,y:0,scale:1};
-    $('lookFitCategory').value=activeCategory;
-    for(const axis of ['x','y','scale'])$('lookFit-'+axis).value=axis==='scale'?Math.round(adj[axis]*100):Math.round(adj[axis]*100);
   }
   function open(person,onApply) {
     draft={avatar:keyFor(person),appearance:clean(person.appearance)};apply=onApply;
     $('lookPreview').src=sourceFor(draft);
     $('hairColors').innerHTML=COLORS.map(([id,name,color])=>`<button type="button" data-hair-color="${id}" aria-pressed="false"><i style="background:${color}"></i>${name}</button>`).join('');
-    $('lookOptions').innerHTML=CATALOG.map(([category,label,options])=>`<fieldset><legend>${label}</legend><div class="look-chips"><button type="button" data-look-category="${category}" data-look-option="" aria-pressed="false">없음</button>${options.map(([id,name])=>`<button type="button" data-look-category="${category}" data-look-option="${id}" aria-pressed="false">${name}</button>`).join('')}</div></fieldset>`).join('');
-    $('lookFitCategory').innerHTML=CATALOG.filter(x=>x[0]!=='makeup').map(([id,name])=>`<option value="${id}">${name}</option>`).join('');
-    document.querySelectorAll('[data-look-option]').forEach(b=>b.addEventListener('click',()=>{const category=b.dataset.lookCategory;draft.appearance[category]=b.dataset.lookOption;if(category!=='makeup'){activeCategory=category;adjustmentUI();}updatePreview();}));
     document.querySelectorAll('[data-hair-color]').forEach(b=>b.addEventListener('click',()=>{draft.appearance.hair=b.dataset.hairColor;updatePreview();}));
-    adjustmentUI();updatePreview();$('lookDialog').showModal();
+    updatePreview();$('lookDialog').showModal();
   }
   function init() {
     if(!$('lookDialog'))return;
     $('lookApply').addEventListener('click',()=>{apply?.({...draft,appearance:clean(draft.appearance)});$('lookDialog').close();});
-    $('lookReset').addEventListener('click',()=>{const variant=draft.appearance.variant;draft.appearance=clean({variant});adjustmentUI();updatePreview();});
-    $('lookFitCategory').addEventListener('change',e=>{activeCategory=e.target.value;adjustmentUI();});
-    for(const axis of ['x','y','scale'])$('lookFit-'+axis).addEventListener('input',e=>{const adj=draft.appearance.adjustments[activeCategory]||{x:0,y:0,scale:1};adj[axis]=Number(e.target.value)/100;draft.appearance.adjustments[activeCategory]=adj;updatePreview();});
+    $('lookReset').addEventListener('click',()=>{const variant=draft.appearance.variant;draft.appearance=clean({variant});updatePreview();});
     const observer=new MutationObserver(records=>{for(const r of records){if(r.type==='attributes')decorate(r.target);else for(const n of r.addedNodes)if(n.nodeType===1)decorate(n);}});
     observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['data-traveler-look']});decorate();
   }
-  window.CaptainStudio={open,clean,sourceFor,compose,analyze,decorate,catalog:CATALOG};
+  window.CaptainStudio={open,clean,sourceFor,compose,analyze,decorate,featherMask};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();

@@ -46,3 +46,14 @@
 }
 
 .guest-notice{padding:12px;margin:8px 0 14px;border:1px solid #e6cfad;background:#fff9ee;border-radius:10px}.guest-notice[hidden],.guest-recovery[hidden]{display:none}.guest-notice p{font-size:12px;line-height:1.6;margin:0 0 9px;color:#65533d}.guest-notice button,.guest-recovery{font:inherit;font-size:12px;padding:9px 12px;border:0;border-radius:7px;background:#252525;color:#fff;cursor:pointer}.guest-notice button:disabled{opacity:.55}.guest-notice #guestBackupButton{margin-top:7px;background:#fff;color:#333;border:1px solid #ddd}.guest-recovery{margin-bottom:10px}.guest-leave-actions{display:grid;gap:8px;margin-top:18px}#guestLeaveDialog p{font-size:14px;line-height:1.7}
+
+/* Simplified traveler controls and compact attendance within the existing row. */
+.look-dialog{width:360px}.look-layout{display:block}.look-preview-pane{border:0;background:#fff;padding:0}.look-preview-pane>img{max-width:260px}.look-footer{gap:8px}
+.agenda-select{grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:8px}
+.agenda-copy{min-width:0}.agenda-copy strong>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.agenda-copy p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:0}
+.agenda-faces{display:flex;align-items:center;justify-content:flex-end;max-width:80px;overflow:hidden;flex-shrink:0}
+.agenda-faces .traveler-face{width:25px;height:25px;border:2px solid white;border-radius:50%;object-fit:cover;margin-left:-7px;flex-shrink:0}.agenda-faces .traveler-face:first-child{margin-left:0}.agenda-faces small{font-size:10px;flex-shrink:0;margin-left:2px}
+.trip-list-actions{display:flex;gap:5px;flex-wrap:wrap}
+@media(min-width:851px){.place-card:not(.is-collapsed){max-height:min(460px,68%)}.place-review-snippet{max-height:220px;white-space:normal}.place-card-body{max-height:inherit;overflow:auto}}
+@media(max-width:600px){.look-preview-pane{display:block}.look-preview-pane>img{width:180px}.hair-colors{margin:10px 0}.agenda-select{grid-template-columns:40px minmax(0,1fr) auto;gap:6px}.agenda-faces .traveler-face{width:22px;height:22px}.agenda-faces{max-width:70px}}
+.agenda-copy strong{display:flex;flex-wrap:nowrap;align-items:center;min-width:0;gap:5px}.agenda-copy strong small{flex-shrink:0;max-width:4em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
