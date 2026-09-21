@@ -2,7 +2,8 @@
   "name": "tripplan",
   "private": true,
   "scripts": {
-    "test": "node tests/travel-utils.test.mjs && node tests/planner-interactions.test.cjs && node tests/trip-clock.test.mjs && node tests/studio-map.test.cjs && node tests/captain-visibility.test.cjs"
+    "test": "node scripts/bundle-guest-drafts.mjs --check && node tests/travel-utils.test.mjs && node tests/planner-interactions.test.cjs && node tests/trip-clock.test.mjs && node tests/studio-map.test.cjs && node tests/captain-visibility.test.cjs && node tests/guest-drafts.test.cjs && node tests/guest-planner.test.cjs",
+    "build:guest": "node scripts/bundle-guest-drafts.mjs"
   },
   "devDependencies": {
     "jsdom": "26.1.0"

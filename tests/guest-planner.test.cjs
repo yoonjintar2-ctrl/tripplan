@@ -18,27 +18,36 @@ w.createClient=()=>({from(table){const obj={select(){return this},single(){retur
 let utils=fs.readFileSync(root+'/dist/travel-utils.js','utf8').replace(/export /g,'');
 let code=fs.readFileSync(root+'/dist/app.js','utf8').replace(/^import .*;\n/gm,'').replace('Promise.allSettled([initMap(), initializeAuth()]);','');
 const clock=fs.readFileSync(root+'/dist/trip-clock.js','utf8').replace(/export /g,'');
-vm.runInContext(fs.readFileSync(root+'/dist/guest-drafts.js','utf8'),c);
+// Deliberately do NOT load guest-drafts.js: reproduce the production missing-script failure.
+assert.equal(w.GuestDrafts,undefined);
 vm.runInContext(utils+'\n'+clock+'\n'+code,c);
 const run=s=>vm.runInContext(s,c),el=s=>w.document.querySelector(s),tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{
-run('initializeGuest();state.followClock=false');assert.equal(run('canEdit()'),true);assert.equal(el('#guestNotice').hidden,false);assert.equal(el('#accountDialog').open,false);
+assert.equal(el('#manageTripsButton').textContent,'내 계획 시작하기');
+el('#manageTripsButton').click();
+assert(el('#tripDialog').open,'actual start menu opens without a global GuestDrafts script');
+assert.equal(run('guestWritable()'),true);
+el('#tripForm [name="title"]').value='게스트 메뉴에서 만든 여행';
+await run('saveTrip({preventDefault(){},currentTarget:document.querySelector("#tripForm")})');
+assert.equal(run('state.trip.title'),'게스트 메뉴에서 만든 여행');
+assert.equal(calls.writes.length,0);
+run('state.followClock=false');assert.equal(run('canEdit()'),true);assert.equal(el('#guestNotice').hidden,false);assert.equal(el('#accountDialog').open,false);
 run('openSchedule()');el('#scheduleName').value='비로그인 카페';el('#scheduleName').dispatchEvent(new w.Event('input',{bubbles:true}));
-assert.equal(JSON.parse(w.localStorage.getItem(w.GuestDrafts.KEY)).editor.fields.name.value,'비로그인 카페');
+assert.equal(JSON.parse(w.localStorage.getItem(run('GuestDrafts.KEY'))).editor.fields.name.value,'비로그인 카페');
 run('state.guestBook=null;initializeGuest()');assert.equal(el('#scheduleName').value,'비로그인 카페','reload restores unfinished form');
 await run('saveSchedule({preventDefault(){},currentTarget:document.querySelector("#scheduleForm")})');assert.equal(run('state.items[0].name'),'비로그인 카페');assert.equal(calls.writes.length,0,'guest never writes anonymous database rows');
 run('state.items=[];state.guestBook=null;initializeGuest()');assert.equal(run('state.items[0].name'),'비로그인 카페');
 // Sample preview never replaces a guest draft or writes demo rows to the server.
-const guestId=run('state.trip.id'), beforeSample=w.localStorage.getItem(w.GuestDrafts.KEY);
+const guestId=run('state.trip.id'), beforeSample=w.localStorage.getItem(run('GuestDrafts.KEY'));
 assert([...el('#tripSelect').options].some(option=>option.value==='sample-seoul-day'));
 await run('switchTrip(SAMPLE_TRIP_ID)');
 assert.equal(run('state.items.length'),4);assert.equal(run('canEdit()'),false);
 assert.equal(el('#tripSelect').value,'sample-seoul-day');
-assert.equal(w.localStorage.getItem(w.GuestDrafts.KEY),beforeSample);
+assert.equal(w.localStorage.getItem(run('GuestDrafts.KEY')),beforeSample);
 assert.equal(calls.writes.length,0);
 await run('switchTrip('+JSON.stringify(guestId)+')');
 assert.equal(run('state.items[0].name'),'비로그인 카페');assert.equal(run('canEdit()'),true);
-assert.equal(w.localStorage.getItem(w.GuestDrafts.KEY),beforeSample);
+assert.equal(w.localStorage.getItem(run('GuestDrafts.KEY')),beforeSample);
 console.log('PASS: first-visitor sample dropdown, read-only preview and lossless return to guest plan');
 const event=new w.Event('beforeunload',{cancelable:true});w.dispatchEvent(event);assert(event.defaultPrevented);
 const a=w.document.createElement('a');a.href='https://example.com/';a.textContent='떠나기';w.document.body.append(a);a.click();assert(el('#guestLeaveDialog').open);el('#guestStay').click();assert(!el('#guestLeaveDialog').open);
@@ -52,7 +61,7 @@ backend.auth.getSession=async()=>({data:{session:{user:{id:'google-owner',email:
 backend.auth.onAuthStateChange=fn=>{calls.authChanged=fn;};
 run('openSchedule()');el('#scheduleName').value='로그인 전에 입력 중';el('#scheduleName').dispatchEvent(new w.Event('input',{bubbles:true}));
 run('state.guestBook.pending={requestedAt:Date.now(),userId:null};writeGuestBook();state.guestMode=false;state.guestBook=null;state.cloudLoads=0;loadCloudWorkspace=async()=>{state.cloudLoads++;const b=guestStore.read(),r=b.records[0];state.trip={...r.trip,owner_id:state.session.user.id};state.items=r.items;state.trips=[state.trip];render();};');
-await run('initializeAuth()');assert.equal(api.db.mt_trips.size,1);assert.equal(api.db.mt_itinerary_items.size,1);assert.equal(run('state.guestBook.dirty'),false);assert.equal(el('#scheduleName').value,'로그인 전에 입력 중');assert(el('#scheduleDialog').open);assert.equal(run('canEdit()'),true);
+await run('initializeAuth()');assert.equal(api.db.mt_trips.size,1);assert.equal([...api.db.mt_trips.values()][0].title,'게스트 메뉴에서 만든 여행');assert.equal(api.db.mt_itinerary_items.size,1);assert.equal(run('state.guestBook.dirty'),false);assert.equal(el('#scheduleName').value,'로그인 전에 입력 중');assert(el('#scheduleDialog').open);assert.equal(run('canEdit()'),true);
 const writes=api.calls.filter(c=>c.action!=='select').length;
 await run('restoreWorkspace()');assert.equal(api.calls.filter(c=>c.action!=='select').length,writes,'repeated auth restoration does not duplicate upload');
 // Returning visitors restore the existing session without opening Google again.

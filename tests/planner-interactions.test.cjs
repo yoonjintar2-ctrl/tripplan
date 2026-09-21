@@ -18,6 +18,7 @@ w.createClient=()=>({from(table){const obj={select(){return this},single(){retur
 let utils=fs.readFileSync(root+'/dist/travel-utils.js','utf8').replace(/export /g,'');
 let code=fs.readFileSync(root+'/dist/app.js','utf8').replace(/^import .*;\n/gm,'').replace('Promise.allSettled([initMap(), initializeAuth()]);','');
 const clock=fs.readFileSync(root+'/dist/trip-clock.js','utf8').replace(/export /g,'');
+vm.runInContext(fs.readFileSync(root+'/dist/guest-drafts.js','utf8'),c);
 vm.runInContext(utils+'\n'+clock+'\n'+code,c);
 const run=s=>vm.runInContext(s,c),el=s=>w.document.querySelector(s),tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{
