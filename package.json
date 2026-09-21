@@ -1,0 +1,11 @@
+{
+  "name": "tripplan",
+  "private": true,
+  "scripts": {
+    "test": "node tests/travel-utils.test.mjs && node tests/planner-interactions.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  },
+  "type": "module"
+}

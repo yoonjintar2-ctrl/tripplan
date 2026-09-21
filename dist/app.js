@@ -14,21 +14,6 @@ const won = value => `₩${Math.round(Number(value || 0)).toLocaleString("ko-KR"
 const safe = value => String(value ?? "").replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-const iconGroups = [
-  { name: "추천", keywords: "기본 점 장소 일정 추천 약속", values: "• 📍 ⭐ ❤️ 💙 ✅ 💡 📷 🎫 🧭 🗺️ ☕ 🍜 🍱 🚆 ✈️ 🚌 🚕 🚗 🏨 🛍️ 🌿 🎁" },
-  { name: "음식·카페", keywords: "음식 식당 맛집 카페 커피 디저트 술 바 아침 점심 저녁", values: "🍏 🍎 🍐 🍊 🍋 🍋‍🟩 🍌 🍉 🍇 🍓 🫐 🍈 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🍆 🥑 🫛 🥦 🥬 🥒 🌶️ 🫑 🌽 🥕 🫒 🧄 🧅 🥔 🍠 🫘 🌰 🫚 🫛 🍞 🥐 🥖 🫓 🥨 🥯 🥞 🧇 🧀 🍖 🍗 🥩 🥓 🍔 🍟 🍕 🌭 🥪 🌮 🌯 🫔 🥙 🧆 🥚 🍳 🥘 🍲 🫕 🥣 🥗 🍿 🧈 🧂 🥫 🍱 🍘 🍙 🍚 🍛 🍜 🍝 🍢 🍣 🍤 🍥 🥮 🍡 🥟 🥠 🥡 🦪 🍦 🍧 🍨 🍩 🍪 🎂 🍰 🧁 🥧 🍫 🍬 🍭 🍮 🍯 ☕ 🍵 🫖 🧋 🥤 🧃 🧉 🥛 🍺 🍻 🥂 🍷 🥃 🍸 🍹 🍾" },
-  { name: "이동", keywords: "이동 교통 기차 전철 지하철 버스 택시 자동차 렌터카 비행기 공항 배 자전거 도보", values: "🚶 🚶‍♀️ 🚶‍♂️ 🧍 🧍‍♀️ 🧍‍♂️ 🧳 🎒 👣 🚲 🛴 🛵 🏍️ 🚗 🚕 🚙 🚌 🚎 🏎️ 🚓 🚑 🚒 🚐 🛻 🚚 🚛 🚜 🦽 🦼 🛺 🚃 🚋 🚞 🚝 🚄 🚅 🚈 🚂 🚆 🚇 🚊 ✈️ 🛫 🛬 🛩️ 💺 🚁 🚟 🚠 🚡 🛰️ 🚀 🛸 ⛵ 🛶 🚤 🛥️ 🛳️ ⛴️ 🚢 ⚓ 🛟 ⛽ 🚧 🚦 🚥 🗿" },
-  { name: "숙소", keywords: "숙소 호텔 리조트 체크인 캠핑 집 휴식", values: "🏨 🏩 🏠 🏡 🏘️ 🏚️ 🛖 ⛺ 🏕️ 🏢 🏬 🏙️ 🌃 🛎️ 🔑 🗝️ 🚪 🛏️ 🛋️ 🪑 🚿 🛁 🧴 🧼 🪥 🧻 🧺 🧹 🧽 🪣 🪟 🪞 🧸 😴 💤" },
-  { name: "관광·문화", keywords: "관광 명소 박물관 미술관 사찰 절 신사 성 역사 문화 건축", values: "🏯 ⛩️ 🏛️ 🕌 🕍 🛕 ⛪ 🏰 🗼 🗽 🗿 🗺️ 🌐 🧭 🎨 🖼️ 🧵 🪡 🧶 🏺 📜 📚 📖 📰 🎭 🎬 🎥 📽️ 🎞️ 🎪 🎡 🎢 🎠 ⛲ 🏟️ 🏫 🏭 🏗️ 🧱 🪨 🪵 🪧 🚩 🏳️ 🏁 🎌" },
-  { name: "자연·날씨", keywords: "자연 공원 산 바다 해변 날씨 일출 일몰 꽃 나무", values: "🌿 ☘️ 🍀 🍃 🍂 🍁 🌱 🪴 🌵 🌴 🌳 🌲 🎋 🎍 🌾 💐 🌷 🌹 🥀 🪻 🪷 🌺 🌸 🌼 🌻 🍄 🪸 🌍 🌎 🌏 🌋 ⛰️ 🏔️ 🏞️ 🏖️ 🏝️ 🏜️ 🌅 🌄 🌇 🌆 🌌 🌉 🌁 ☀️ 🌤️ ⛅ 🌥️ ☁️ 🌦️ 🌧️ ⛈️ 🌩️ 🌨️ ❄️ ☃️ ⛄ 🌬️ 💨 🌪️ 🌈 ☔ 💧 🌊" },
-  { name: "활동·스포츠", keywords: "활동 액티비티 스포츠 운동 놀이 수영 등산 골프 경기", values: "⚽ 🏀 🏈 ⚾ 🥎 🎾 🏐 🏉 🥏 🎱 🪀 🏓 🏸 🏒 🏑 🥍 🏏 🪃 🥅 ⛳ 🪁 🏹 🎣 🤿 🥊 🥋 🎽 🛹 🛼 🛷 ⛸️ 🥌 🎿 ⛷️ 🏂 🪂 🏋️ 🤼 🤸 ⛹️ 🤺 🤾 🏌️ 🏇 🧘 🏄 🏊 🤽 🚣 🧗 🚵 🚴 🏆 🥇 🥈 🥉 🏅 🎖️" },
-  { name: "쇼핑", keywords: "쇼핑 상점 시장 기념품 선물 패션 옷 가방", values: "🛍️ 🎁 🛒 🏪 🏬 💳 💵 💴 💶 💷 🪙 💰 💎 👛 👜 👝 🎒 🧳 👓 🕶️ 🥽 👔 👕 👖 🧣 🧤 🧥 🧦 👗 👘 🥻 🩱 🩲 🩳 👙 👚 🪭 👞 👟 🥾 🥿 👠 👡 🩰 👢 👑 👒 🎩 🎓 🧢 🪖 ⌚ 💍 💄" },
-  { name: "공연·즐길거리", keywords: "공연 음악 콘서트 축제 파티 노래 영화 게임", values: "🎵 🎶 🎼 🎤 🎧 📻 🎷 🪗 🎸 🎹 🎺 🎻 🪕 🥁 🪘 🪇 🪈 🎙️ 🎚️ 🎛️ 🕺 💃 🪩 🎉 🎊 🎈 🎆 🎇 🧨 ✨ 🎃 🎄 🎐 🎎 🎏 🎑 🧧 🎀 🎟️ 🎫 🎮 🕹️ 🎰 🎲 🧩 ♟️ 🎯 🎳 🎴 🃏 🀄" },
-  { name: "휴식·건강", keywords: "휴식 건강 병원 약 마사지 스파 온천 뷰티", values: "♨️ 💆 💆‍♀️ 💆‍♂️ 🧖 🧖‍♀️ 🧖‍♂️ 🛀 💅 🧘 😌 🫧 🕯️ 🪔 🩺 💊 💉 🩹 🩼 🩻 🏥 🚑 ❤️‍🩹 🫶 🤍 💚 💛 🧡 💜 🩵 🩷 🩶 🖤" },
-  { name: "도구·기타", keywords: "도구 예약 확인 전화 시간 위치 알림 문서 사진 기타", values: "📌 📍 🗓️ 📅 ⏰ ⌚ ⏳ ⌛ 🔔 📣 📢 💬 💭 🗨️ 📞 ☎️ 📱 💻 ⌨️ 🖥️ 🖨️ 📸 📹 🔍 🔎 🔦 💡 📝 ✏️ 🖊️ 📎 📏 ✂️ 🔒 🔓 🔐 🔑 ✅ ☑️ ✔️ ❌ ❗ ❓ ⚠️ ℹ️ ➕ ➖ ➡️ ⬅️ ⬆️ ⬇️ 🔄 🔗 📶 🔋 🔌" }
-].map(group => ({ ...group, values: group.values.split(" ") }));
-const icons = [{ value: "", group: "추천", keywords: "기본 점 없음" }, ...iconGroups.flatMap(group => group.values.map(value => ({ value, group: group.name, keywords: `${group.name} ${group.keywords}` })))];
-
 function todayString() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -219,17 +204,15 @@ function render() {
   }));
 
   $("#itemCount").textContent = `${items.length}개의 일정`;
-  $("#mapDayLabel").textContent = `DAY ${String(dates.indexOf(state.activeDate) + 1).padStart(2, "0")} · ${state.trip.destination || "동선"}`;
+  $("#mapDayLabel").textContent = `DAY ${String(dates.indexOf(state.activeDate) + 1).padStart(2, "0")} · 동선`;
   $("#totalCost").textContent = won(state.items.reduce((sum, item) => sum + (item.settlement_enabled ? Number(item.cost_won || 0) : 0), 0));
   renderTravelerFilter();
   $("#agendaList").innerHTML = items.length ? items.map(item => {
     const current = isCurrentItem(item, items);
-    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.icon || "•")} ${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p>${item.participant_ids ? `<div class="agenda-attendees">${attendeesFor(item, travelers()).map(person => faceHtml(person, "")).join("")} ${attendeesFor(item, travelers()).map(person => safe(person.nickname)).join(" · ")}</div>` : ""}</span></button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button></div>`;
-  }).join("") : `<div class="agenda-empty">아직 일정이 없습니다.<br>첫 일정을 추가해 보세요.</div>`;
+    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p>${item.participant_ids ? `<div class="agenda-attendees">${attendeesFor(item, travelers()).map(person => faceHtml(person, "")).join("")} ${attendeesFor(item, travelers()).map(person => safe(person.nickname)).join(" · ")}</div>` : ""}</span></button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button></div>`;
+  }).join("") : `<div class="agenda-empty captain-empty"><img src="./assets/captain/guide-map.webp" width="98" height="120" alt="지도를 함께 보는 캡틴비어"><strong>아직 비어 있는 여행 지도</strong><p>가고 싶은 곳 하나로 시작해요.<br>제가 옆에서 함께할게요.</p></div>`;
   $$("[data-item-id]").forEach(button => {
     button.addEventListener("click", () => selectStop(button.dataset.itemId, true));
-    button.addEventListener("mouseenter", () => previewStop(button.dataset.itemId));
-    button.addEventListener("mouseleave", () => previewStop(state.selectedId));
   });
   $$("[data-edit-item]").forEach(button => button.addEventListener("click", () => {
     const item = state.items.find(value => value.id === button.dataset.editItem);
@@ -264,8 +247,9 @@ function updatePlaceCard(item) {
   $("#placeMemo").textContent = item.memo || "";
   $("#placeMemo").hidden = !item.memo;
   $("#placeRating").textContent = item.maps_url ? "Google 지도" : "장소 미등록";
-  if (item.place_id) renderPlacePreview(item);
-  else {state.placePreviewRequest++; $("#placePreview").innerHTML = '<div class="place-preview-empty">선택된 Google 장소의 사진과 리뷰가 여기에 표시됩니다.</div>'; $("#placeReviewSnippet").textContent = '';}
+  syncPlaceCardExpansion();
+  if (item.maps_url && !state.placeCardCollapsed) renderPlacePreview(item);
+  else if (!item.maps_url) {state.placePreviewRequest++; $("#placePreview").innerHTML = '<div class="place-preview-empty">선택된 Google 장소의 사진과 리뷰가 여기에 표시됩니다.</div>'; $("#placeReviewSnippet").textContent = '';}
 }
 async function renderPlacePreview(item) {
   const requestId = ++state.placePreviewRequest;
@@ -299,16 +283,19 @@ async function renderPlacePreview(item) {
   }
 }
 
+let googleMapsLoad;
 async function loadGoogleMaps() {
   if (window.google?.maps?.importLibrary) return;
-  await new Promise((resolve, reject) => {
-    window.__morrowMapsReady = resolve;
+  if (!googleMapsLoad) googleMapsLoad = new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    const timeout = setTimeout(() => { googleMapsLoad = null; script.remove(); reject(new Error("지도 연결이 지연되고 있습니다. 다시 시도해 주세요.")); }, 20000);
+    window.__morrowMapsReady = () => { clearTimeout(timeout); resolve(); };
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&v=weekly&loading=async&libraries=places,marker&language=ko&region=KR&callback=__morrowMapsReady`;
     script.async = true;
-    script.onerror = () => reject(new Error("Google 지도를 불러오지 못했습니다."));
+    script.onerror = () => { clearTimeout(timeout); googleMapsLoad = null; script.remove(); reject(new Error("Google 지도를 불러오지 못했습니다.")); };
     document.head.append(script);
   });
+  return googleMapsLoad;
 }
 async function initMap() {
   try {
@@ -319,6 +306,7 @@ async function initMap() {
       mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
       gestureHandling: "greedy", clickableIcons: true
     });
+    state.map.addListener("click", event => handleMainMapClick(event));
     state.mapReady = true;
     renderMap();
   } catch (error) {
@@ -328,9 +316,7 @@ async function initMap() {
 function markerContent(item, selected = false) {
   const node = document.createElement("div");
   node.className = `route-marker ${selected ? "selected" : ""}`;
-  node.innerHTML = `<span>${item.icon || "•"}</span>`;
-  node.addEventListener("mouseenter", () => previewStop(item.id));
-  node.addEventListener("mouseleave", () => previewStop(state.selectedId));
+  node.innerHTML = `<span>${activeItems().findIndex(value => value.id === item.id) + 1}</span>`;
   return node;
 }
 async function renderMap() {
@@ -342,7 +328,7 @@ async function renderMap() {
   state.routes.forEach(route=>route.setMap(null));state.routes=[];
   const items=activeItems().filter(itemPosition), allItems=activeItems(true), allPeople=travelers();
   items.forEach(item=>{const marker=new AdvancedMarkerElement({map:state.map,position:itemPosition(item),title:item.name,content:markerContent(item,item.id===state.selectedId),gmpClickable:true});marker.addEventListener('gmp-click',()=>selectStop(item.id,true));state.markers.set(item.id,marker);});
-  const colors=['#8060b7','#257da1','#ce7744','#45856e','#bd5981','#807f2c'];
+  const colors=['#292929','#707070','#a24a43','#596c70','#867c69','#8b6666'];
   const people=allPeople.filter(person=>state.travelerFilter==='all'||state.travelerFilter===person.id);
   const routeGroups=new Map();
   people.forEach(person=>{const path=personStops(items,person.id),signature=path.map(item=>item.id).join('|');if(!signature)return;if(!routeGroups.has(signature))routeGroups.set(signature,{path,people:[],color:colors[routeGroups.size%colors.length]});routeGroups.get(signature).people.push(person);});
@@ -390,20 +376,6 @@ async function panMapToItem(item, animate = true) {
   if (animate) await sleep(far ? 650 : 320);
   if ((state.map.getZoom() || 0) < 14) state.map.setZoom(14);
 }
-function previewStop(id) {
-  const item = state.items.find(value => value.id === id);
-  if (!item) {
-    updatePlaceCard(null);
-    state.markers.forEach(marker => marker.content?.classList.remove("selected"));
-    fitActiveBounds();
-    return;
-  }
-  updatePlaceCard(item);
-  state.markers.forEach((marker, markerId) => {
-    marker.content?.classList.toggle("selected", markerId === id);
-  });
-  if (state.mapReady && itemPosition(item)) state.map.panTo(itemPosition(item));
-}
 function selectStop(id, animate = false) {
   state.selectedId = id;
   render();
@@ -411,34 +383,23 @@ function selectStop(id, animate = false) {
   if (item) panMapToItem(item, animate);
 }
 
-function fillTimeOptions() {
-  $("#iconCategory").innerHTML = iconGroups.map(group => `<option value="${safe(group.name)}">${safe(group.name)}</option>`).join("");
+function setTimeFields(prefix, value = "") {
+  const time = value ? String(value).slice(0, 5) : "";
+  $(`#${prefix}Time`).value = time;
+  $(`#${prefix}TimeButton span`).textContent = time || (prefix === "start" ? "시간 미정" : "시간 선택");
 }
-function setTimeFields(prefix, value = "") { $(`#${prefix}Time`).value = value ? String(value).slice(0,5) : ""; }
-function readTimeFields(prefix) {return $(`#${prefix}Time`).value;}
+function readTimeFields(prefix) { return $(`#${prefix}Time`).value; }
 function toggleEndTime(show) {
   $("#endTimeFields").hidden = !show;
   $("#toggleEndTime").checked = show;
   $("#endTime").disabled = !show;
-  if (!show) $("#endTime").value = "";
+  if (!show) setTimeFields("end", "");
 }
 function toggleSettlement(show) {
   $("#settlementEnabled").checked = show; $("#costFields").hidden = !show; $("#settlementUnset").hidden = show;
   $("#scheduleForm").elements.cost.disabled = !show; $("#splitType").disabled = !show;
   $("#ratioFields").hidden = !show || $("#splitType").value !== 'custom';
   $$("input",$("#ratioFields")).forEach(input=>input.disabled=!show || $("#splitType").value !== 'custom');
-}
-function updateIconButton(){const value=$("#selectedIcon").value;$("#openIconPicker").textContent=value || '＋';$("#openIconPicker").classList.toggle('has-icon',Boolean(value));$("#openIconPicker").setAttribute('aria-label',value ? '아이콘 변경' : '아이콘 추가');}
-function renderIcons(query = "") {
-  const keyword = query.trim().toLowerCase();
-  const category = $("#iconCategory").value || "추천";
-  const matches = icons.filter(icon => keyword ? icon.keywords.toLowerCase().includes(keyword) || icon.value.includes(keyword) : icon.group === category);
-  $("#iconResultCount").textContent = keyword ? `전체 카테고리에서 ${matches.length}개 찾음` : `${category} · ${matches.length}개`;
-  $("#iconGrid").innerHTML = matches.length ? matches.map(icon => `<button class="icon-option" type="button" data-icon="${icon.value}" aria-label="${icon.value || "기본 점"}" aria-pressed="${$("#selectedIcon").value === icon.value}">${icon.value || "•"}</button>`).join("") : `<p class="icon-empty">관련 아이콘이 없습니다. 다른 단어로 검색해 보세요.</p>`;
-  $$("[data-icon]").forEach(button => button.addEventListener("click", () => {
-    $("#selectedIcon").value = button.dataset.icon;
-    updateIconButton(); $("#iconDialog").close();
-  }));
 }
 function renderCategories() {
   const categories=state.trip.categories || ['음식','관광','이동','쇼핑'];
@@ -461,7 +422,7 @@ function resetScheduleForm(item = null) {
   form.reset();
   state.placeResolveRequest++; state.editorMapRequest++; clearTimeout(placeSearchTimer);
   state.pendingPlace = null; state.participantIds = item?.participant_ids ?? null;
-  $("#editorMapWrap").hidden = true; closeCategoryMenu();
+  clearEditorMarkers(); closeCategoryMenu();
   form.elements.itemId.value = item?.id || "";
   form.elements.date.min = state.trip.start_date;
   form.elements.date.max = state.trip.end_date;
@@ -474,7 +435,7 @@ function resetScheduleForm(item = null) {
   $("#placeSearchInput").setAttribute("aria-expanded", "false");
   $("#placeSearchResults").hidden = true;
   $("#placeSearchResults").innerHTML = "";
-  $("#clearPlaceButton").hidden = !item?.place_id;
+  $("#clearPlaceButton").hidden = !item?.maps_url;
   if (item?.maps_url) {
     state.pendingPlace = {
       sourceQuery: item.name, placeId: item.place_id, name: item.name,
@@ -486,18 +447,14 @@ function resetScheduleForm(item = null) {
   form.elements.name.dataset.autoFilled = item ? "false" : "true";
   form.elements.memo.value = item?.memo || "";
   form.elements.cost.value = item?.cost_won || "";
-  $("#selectedIcon").value = item?.icon || "";
-  $("#iconSearch").value = "";
-  $("#iconCategory").value = "추천";
   const custom = item && Object.keys(item.split_ratios || {}).length > 0;
   form.elements.splitType.value = custom ? "custom" : "equal";
   $("#ratioFields").hidden = !custom;
   renderRatioFields(item?.split_ratios || {});
   toggleSettlement(Boolean(item?.settlement_enabled));
-  renderAttendeeSummary(); $("#memoSummary").textContent=item?.memo || "＋ 세부 메모 추가"; updateIconButton();
+  renderAttendeeSummary(); $("#memoSummary").textContent=item?.memo || "＋ 세부 메모 추가";
   renderCategories();
   form.elements.category.value = item?.category || ""; $("#categoryValue").textContent=item?.category || "선택 안 함";
-  renderIcons();
   $("#mapsLinkStatus").className = "field-hint";
   $("#mapsLinkStatus").textContent = item?.place_id ? "선택된 Google 장소입니다." : "장소 없이도 일정을 저장할 수 있습니다.";
   $("#formError").textContent = "";
@@ -525,11 +482,11 @@ function openSchedule(item = null) {
   resetScheduleForm(item);
   $("#scheduleDialog").showModal();
   $("#scheduleDialog").scrollTop=0;
-  if(state.pendingPlace) renderEditorMap(state.pendingPlace);
+  renderEditorMap(state.pendingPlace);
 }
 
 async function findGooglePlaces(query, bias = null) {
-  if (!state.mapReady) await initMap();
+  await loadGoogleMaps();
   const { Place } = await google.maps.importLibrary("places");
   const request = {
     textQuery: query,
@@ -543,7 +500,7 @@ async function findGooglePlaces(query, bias = null) {
 }
 function clearPlaceSelection(clearQuery = true) {
   state.placeResolveRequest++; state.editorMapRequest++; clearTimeout(placeSearchTimer);
-  $("#editorMapWrap").hidden = true;
+  clearEditorMarkers();
   state.pendingPlace = null;
   $("#mapsUrlInput").value = "";
   if (clearQuery) $("#placeSearchInput").value = "";
@@ -553,12 +510,14 @@ function clearPlaceSelection(clearQuery = true) {
   $("#clearPlaceButton").hidden = true;
   $("#mapsLinkStatus").className = "field-hint";
   $("#mapsLinkStatus").textContent = "장소 없이도 일정을 저장할 수 있습니다.";
+  renderEditorMap(null);
 }
 function selectGooglePlace(place) {
   if (!place?.location) return;
+  state.placeResolveRequest++; clearTimeout(placeSearchTimer);
   const nameInput = $("#scheduleForm").elements.name;
   state.pendingPlace = {
-    sourceQuery: $("#placeSearchInput").value, placeId: place.id, name: place.displayName,
+    sourceQuery: $("#placeSearchInput").value, placeId: place.id || null, name: place.displayName,
     address: place.formattedAddress, mapsUrl: place.googleMapsURI || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.displayName)}&query_place_id=${encodeURIComponent(place.id)}`,
     latitude: place.location.lat(), longitude: place.location.lng()
   };
@@ -596,11 +555,10 @@ async function searchGooglePlaces(rawQuery) {
     }
     const places = await findGooglePlaces(query);
     if (requestId !== state.placeResolveRequest || $("#placeSearchInput").value.trim() !== query) return;
-    results.innerHTML = places.length ? places.map((place, index) => `<button type="button" role="option" data-place-index="${index}"><strong>${safe(place.displayName)}</strong><small>${safe(place.formattedAddress || "주소 정보 없음")}</small></button>`).join("") : `<p>검색 결과가 없습니다.</p>`;
-    results.hidden = false;
-    $("#placeSearchInput").setAttribute("aria-expanded", "true");
-    $$('[data-place-index]', results).forEach(button => button.addEventListener("click", () => selectGooglePlace(places[Number(button.dataset.placeIndex)])));
-    status.textContent = places.length ? "검색 결과에서 장소를 선택해 주세요." : "다른 검색어로 다시 찾아보세요.";
+    showPlaceResults(places);
+    await renderEditorMap(null, places);
+    if (requestId !== state.placeResolveRequest) return;
+    status.textContent = places.length ? "검색 목록 또는 지도 핀에서 장소를 선택해 주세요." : "다른 검색어로 다시 찾아보세요.";
     status.className = places.length ? "field-hint" : "field-hint is-warning";
   } catch (error) {
     if (requestId !== state.placeResolveRequest) return;
@@ -643,7 +601,7 @@ async function saveSchedule(event) {
   }
   const row = {
     trip_id: state.trip.id, item_date: data.get("date"), start_time: startTime || null, end_time: endTime || null,
-    icon: data.get("icon") || "", name: String(data.get("name") || "").trim(), maps_url: place?.mapsUrl || null,
+    icon: "", name: String(data.get("name") || "").trim(), maps_url: place?.mapsUrl || null,
     place_id: place?.placeId || null, latitude: place?.latitude ?? null, longitude: place?.longitude ?? null,
     category: data.get("category") || null, memo: data.get("memo") || null,
     cost_won: settlementEnabled ? Number(data.get("cost") || 0) : 0, settlement_enabled: settlementEnabled, participant_ids: state.participantIds, split_ratios: splitRatios, created_by: state.session.user.id
@@ -793,6 +751,7 @@ function clearShareParameters() {
   history.replaceState({}, "", url);
 }
 async function switchTrip(tripId, options = {}) {
+  dismissMapPick();
   if (!tripId || !state.session) return;
   setSync("여행을 불러오는 중");
   await loadTripData(tripId);
@@ -868,7 +827,7 @@ function renderTripList() {
   }
   list.innerHTML = state.trips.map(trip => {
     const role = trip._role === "owner" ? "소유자" : trip._role === "editor" ? "편집 가능" : "열람만";
-    return `<div class="trip-list-item ${trip.id === state.trip.id ? "is-active" : ""}"><button type="button" class="trip-list-main" data-trip-id="${safe(trip.id)}"><span><strong>${safe(trip.title)}</strong><small>${safe(trip.destination || "여행지 미정")} · ${safe(trip.start_date)} — ${safe(trip.end_date)}</small></span><em>${role}</em></button><button type="button" class="trip-share-button" data-share-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 링크 공유 설정">🔗 링크</button></div>`;
+    return `<div class="trip-list-item ${trip.id === state.trip.id ? "is-active" : ""}"><button type="button" class="trip-list-main" data-trip-id="${safe(trip.id)}"><span><strong>${safe(trip.title)}</strong><small>${safe(trip.start_date)} — ${safe(trip.end_date)}</small></span><em>${role}</em></button><button type="button" class="trip-share-button" data-share-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 링크 공유 설정">🔗 링크</button></div>`;
   }).join("");
   $$("[data-trip-id]", list).forEach(button => button.addEventListener("click", async () => {
     if (button.dataset.tripId !== state.trip.id) await switchTrip(button.dataset.tripId);
@@ -893,10 +852,9 @@ function resetTripForm(trip = null) {
   const editable = !isExisting || role === "owner";
   form.elements.tripId.value = trip?.id || "";
   form.elements.title.value = trip?.title || "";
-  form.elements.destination.value = trip?.destination || "";
   form.elements.startDate.value = trip?.start_date || todayString();
   form.elements.endDate.value = trip?.end_date || todayString();
-  [form.elements.title, form.elements.destination, form.elements.startDate, form.elements.endDate].forEach(input => { input.disabled = !editable; });
+  [form.elements.title, form.elements.startDate, form.elements.endDate].forEach(input => { input.disabled = !editable; });
   $("#tripFormTitle").textContent = isExisting ? "여행 정보" : "새 여행 만들기";
   $("#tripFormRole").textContent = !isExisting ? "일정 없이 시작합니다" : role === "owner" ? "제목과 기간을 수정할 수 있습니다" : role === "editor" ? "이 여행을 함께 편집 중입니다" : "이 여행을 열람할 수 있습니다";
   $("#saveTripButton").hidden = !editable;
@@ -922,7 +880,7 @@ async function saveTrip(event) {
   const data = new FormData(form);
   const tripId = String(data.get("tripId") || "");
   const title = String(data.get("title") || "").trim();
-  const destination = String(data.get("destination") || "").trim();
+  const destination = tripId ? (state.trips.find(trip => trip.id === tripId)?.destination || "") : "";
   const startDate = String(data.get("startDate") || "");
   const endDate = String(data.get("endDate") || "");
   const errorNode = $("#tripFormError");
@@ -1117,7 +1075,7 @@ async function initializeAuth() {
 }
 
 function travelers(){return travelersFor(state.trip,state.members);}
-function avatarUrl(person){const key=/^(male|female)-(00[1-9]|0[1-9]\d|1\d\d|200)$/.test(person.avatar || '') ? person.avatar : 'male-001';return `./assets/avatars/${key}.svg`;}
+function avatarUrl(person){const key=/^(male|female)-(00[1-9]|0[1-9]\d|1\d\d|200)$/.test(person.avatar || '') ? person.avatar : 'male-001';return `./assets/avatars-clay/${key}.webp`;}
 function faceHtml(person,alt=person.nickname){return `<img class="traveler-face" src="${avatarUrl(person)}" alt="${safe(alt)}" width="38" height="38">`;}
 function renderTravelerFilter(){const select=$("#travelerFilter");const people=travelers();if(!people.some(p=>p.id===state.travelerFilter))state.travelerFilter='all';select.innerHTML='<option value="all">모두 보기</option>'+people.map(person=>`<option value="${safe(person.id)}">${safe(person.nickname)}</option>`).join('');select.value=state.travelerFilter;}
 function renderAttendeeSummary(){const people=attendeesFor({participant_ids:state.participantIds},travelers());$("#attendeeSummary").innerHTML=`<div class="face-stack">${people.slice(0,4).map(person=>faceHtml(person)).join('')}</div><div><strong>${people.length}명 ${state.participantIds == null ? '모두 함께' : '함께'}</strong><small>${people.map(person=>safe(person.nickname)).join(' · ')}</small></div><span class="attendee-badge">${state.participantIds == null ? '전원 참석' : '개별 일정'}</span>`;}
@@ -1127,15 +1085,190 @@ function renderDraftTravelers(){const editable=state.rosterEditable;$("#traveler
   $$('[data-change-avatar]').forEach(button=>button.addEventListener('click',()=>{state.avatarPerson=button.dataset.changeAvatar;const person=state.draftTravelers.find(p=>p.id===state.avatarPerson);state.avatarGroup=person.avatar?.startsWith('female')?'female':'male';state.avatarPage=Math.floor((Number(person.avatar?.split('-')[1] || 1)-1)/25);renderAvatarGrid();$("#avatarDialog").showModal();}));
   $$('[data-remove-traveler]').forEach(button=>button.addEventListener('click',()=>{const id=button.dataset.removeTraveler;if(state.draftTravelers.length<=1)return showToast('여행 인원은 한 명 이상 필요합니다.');const used=state.items.some(item=>item.participant_ids?.includes(id) || Object.hasOwn(item.split_ratios || {},id));if(used)return showToast('이 인원이 지정된 일정의 참석·정산 설정을 먼저 변경해 주세요.');state.draftTravelers=state.draftTravelers.filter(p=>p.id!==id);renderDraftTravelers();}));
 }
-function renderAvatarGrid(){const group=state.avatarGroup || 'female',page=state.avatarPage || 0,person=state.draftTravelers.find(p=>p.id===state.avatarPerson);$$('[data-avatar-group]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.avatarGroup===group)));$("#avatarGrid").innerHTML=Array.from({length:25},(_,index)=>{const number=page*25+index+1,key=`${group}-${String(number).padStart(3,'0')}`;return `<button type="button" class="avatar-option" data-avatar="${key}" aria-label="${group==='male'?'남성':'여성'} 캐릭터 ${number}" aria-pressed="${person?.avatar===key}"><img src="./assets/avatars/${key}.svg" alt="" width="70" height="70"></button>`;}).join('');$("#avatarPage").textContent=`${page+1} / 8`;$("#avatarPrevious").disabled=page===0;$("#avatarNext").disabled=page===7;$$('[data-avatar]').forEach(button=>button.addEventListener('click',()=>{if(person)person.avatar=button.dataset.avatar;renderDraftTravelers();$("#avatarDialog").close();}));}
-async function renderEditorMap(place){const request=++state.editorMapRequest;if(place?.latitude==null || place?.longitude==null){$("#editorMapWrap").hidden=true;return;}try{await loadGoogleMaps();const {Map}=await google.maps.importLibrary('maps');const {AdvancedMarkerElement}=await google.maps.importLibrary('marker');if(request!==state.editorMapRequest||!$("#scheduleDialog").open)return;$("#editorMapWrap").hidden=false;$("#editorPlaceName").textContent=place.name || '선택한 위치';$("#editorPlaceAddress").textContent=place.address || `${Number(place.latitude).toFixed(5)}, ${Number(place.longitude).toFixed(5)}`;const position={lat:Number(place.latitude),lng:Number(place.longitude)};if(!state.editorMap)state.editorMap=new Map($("#editorMap"),{center:position,zoom:15,mapId:'DEMO_MAP_ID',disableDefaultUI:true,gestureHandling:'cooperative',clickableIcons:false});else {google.maps.event.trigger(state.editorMap,'resize');state.editorMap.setCenter(position);state.editorMap.setZoom(15);}if(state.editorMarker)state.editorMarker.map=null;state.editorMarker=new AdvancedMarkerElement({map:state.editorMap,position,title:place.name});}catch{if(request===state.editorMapRequest){$("#editorMapWrap").hidden=true;$("#mapsLinkStatus").textContent='장소는 선택됐지만 지도 미리보기를 불러오지 못했습니다.';}}}
+function renderAvatarGrid(){const group=state.avatarGroup || 'female',page=state.avatarPage || 0,person=state.draftTravelers.find(p=>p.id===state.avatarPerson);$$('[data-avatar-group]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.avatarGroup===group)));$("#avatarGrid").innerHTML=Array.from({length:25},(_,index)=>{const number=page*25+index+1,key=`${group}-${String(number).padStart(3,'0')}`;return `<button type="button" class="avatar-option" data-avatar="${key}" aria-label="${group==='male'?'남성':'여성'} 캐릭터 ${number}" aria-pressed="${person?.avatar===key}"><img src="./assets/avatars-clay/${key}.webp" alt="" width="70" height="70"></button>`;}).join('');$("#avatarPage").textContent=`${page+1} / 8`;$("#avatarPrevious").disabled=page===0;$("#avatarNext").disabled=page===7;$$('[data-avatar]').forEach(button=>button.addEventListener('click',()=>{if(person)person.avatar=button.dataset.avatar;renderDraftTravelers();$("#avatarDialog").close();}));}
 async function resolvePastedMapsLink(query,requestId){let parsed=parseMapsUrl(query);if(parsed.short){const {data,error}=await supabase.functions.invoke('resolve-maps-link',{body:{url:parsed.url}});if(error || data?.error)throw new Error(data?.error || '짧은 링크를 확인하지 못했습니다. Google 지도에서 주소창의 전체 링크를 복사해 주세요.');parsed=parseMapsUrl(data.url);}if(requestId!==state.placeResolveRequest)return;
   if(parsed.placeId){await loadGoogleMaps();const {Place}=await google.maps.importLibrary('places');const place=new Place({id:parsed.placeId});await place.fetchFields({fields:['id','displayName','formattedAddress','location','googleMapsURI']});if(requestId===state.placeResolveRequest)selectGooglePlace(place);return;}
-  if(parsed.name){const places=await findGooglePlaces(parsed.name,parsed.bias);if(requestId!==state.placeResolveRequest)return;if(places.length){const results=$("#placeSearchResults");results.innerHTML=places.map((place,index)=>`<button type="button" role="option" data-link-place="${index}"><strong>${safe(place.displayName)}</strong><small>${safe(place.formattedAddress || '')}</small></button>`).join('');results.hidden=false;$("#placeSearchInput").setAttribute('aria-expanded','true');$$('[data-link-place]',results).forEach(button=>button.addEventListener('click',()=>selectGooglePlace(places[Number(button.dataset.linkPlace)])));$("#mapsLinkStatus").textContent='링크의 장소를 찾았습니다. 주소를 확인하고 선택해 주세요.';$("#mapsLinkStatus").className='field-hint';if(parsed.location)renderEditorMap({latitude:parsed.location.lat,longitude:parsed.location.lng,name:parsed.name});return;}}
+  if(parsed.name){const places=await findGooglePlaces(parsed.name,parsed.bias);if(requestId!==state.placeResolveRequest)return;if(places.length){showPlaceResults(places);await renderEditorMap(null,places);$('#mapsLinkStatus').textContent='링크의 장소를 찾았습니다. 목록 또는 지도 핀에서 선택해 주세요.';return;}}
   if(parsed.location){state.pendingPlace={mapsUrl:parsed.url,placeId:null,latitude:parsed.location.lat,longitude:parsed.location.lng,name:parsed.name || '선택한 위치',address:''};$("#mapsUrlInput").value=parsed.url;$("#placeSearchResults").hidden=true;$("#placeSearchInput").setAttribute('aria-expanded','false');$("#clearPlaceButton").hidden=false;$("#mapsLinkStatus").textContent='링크의 위치를 확인했습니다.';$("#mapsLinkStatus").className='field-hint is-success';renderEditorMap(state.pendingPlace);return;}
   throw new Error('이 링크에서 위치를 확인하지 못했습니다. 장소 이름으로 검색하거나 Google 지도에서 장소 공유 링크를 다시 복사해 주세요.');
 }
 
+
+// Explicit time selection works across desktop and mobile without a numeric keyboard.
+let timeDraft = { prefix: 'start', hour: '09', minute: '00' };
+function openTimePicker(prefix) {
+  const value = readTimeFields(prefix) || (prefix === 'end' ? readTimeFields('start') : '') || '09:00';
+  timeDraft = { prefix, hour: value.slice(0, 2), minute: value.slice(3, 5) };
+  $('#timePickerTitle').textContent = prefix === 'start' ? '시작 시간 선택' : '종료 시간 선택';
+  renderTimePicker();
+  $('#timePickerDialog').showModal();
+  requestAnimationFrame(() => {
+    $('#hourOptions [aria-pressed="true"]')?.scrollIntoView({ block: 'center' });
+    $('#minuteOptions [aria-pressed="true"]')?.scrollIntoView({ block: 'center' });
+  });
+}
+function renderTimePicker() {
+  for (const [part, count, selector] of [['hour', 24, '#hourOptions'], ['minute', 60, '#minuteOptions']]) {
+    const container = $(selector);
+    container.innerHTML = Array.from({ length: count }, (_, n) => {
+      const value = String(n).padStart(2, '0');
+      return `<button type="button" data-time-part="${part}" data-time-value="${value}" aria-pressed="${timeDraft[part] === value}">${value}${part === 'hour' ? '시' : '분'}</button>`;
+    }).join('');
+    $$('[data-time-part]', container).forEach(button => button.addEventListener('click', () => {
+      timeDraft[part] = button.dataset.timeValue;
+      $$('[data-time-part]', container).forEach(option => option.setAttribute('aria-pressed', String(option === button)));
+    }));
+  }
+}
+$$('[data-time-picker]').forEach(button => button.addEventListener('click', () => openTimePicker(button.dataset.timePicker)));
+$('#confirmTime').addEventListener('click', () => {
+  setTimeFields(timeDraft.prefix, `${timeDraft.hour}:${timeDraft.minute}`);
+  $('#timePickerDialog').close();
+  $(`#${timeDraft.prefix}TimeButton`).focus();
+});
+$('#clearTime').addEventListener('click', () => {
+  setTimeFields(timeDraft.prefix, '');
+  if (timeDraft.prefix === 'end') toggleEndTime(false);
+  $('#timePickerDialog').close();
+});
+
+function syncPlaceCardExpansion() {
+  const collapsed = Boolean(state.placeCardCollapsed);
+  $('#placeCardDetails').hidden = collapsed;
+  $('#placeCard').classList.toggle('is-collapsed', collapsed);
+  $('#togglePlaceCard').setAttribute('aria-expanded', String(!collapsed));
+  $('#togglePlaceCard').textContent = collapsed ? '펼치기 ⌃' : '접기 ⌄';
+}
+$('#togglePlaceCard').addEventListener('click', () => {
+  state.placeCardCollapsed = !state.placeCardCollapsed;
+  syncPlaceCardExpansion();
+  if (!state.placeCardCollapsed && selectedItem()?.maps_url) renderPlacePreview(selectedItem());
+  else state.placePreviewRequest++;
+});
+
+function clearEditorMarkers() {
+  if (state.editorMarker) { state.editorMarker.map = null; state.editorMarker = null; }
+  (state.editorResultMarkers || []).forEach(marker => { marker.map = null; });
+  state.editorResultMarkers = [];
+}
+function showPlaceResults(places) {
+  state.editorResults = places;
+  const results = $('#placeSearchResults');
+  results.innerHTML = places.length ? places.map((place, index) => `<button type="button" role="option" aria-selected="false" data-place-index="${index}"><span class="result-number">${index + 1}</span><span><strong>${safe(place.displayName)}</strong><small>${safe(place.formattedAddress || '주소 정보 없음')}</small></span></button>`).join('') : '<p>검색 결과가 없습니다. 지도에서 직접 위치를 선택할 수도 있어요.</p>';
+  results.hidden = false;
+  $('#placeSearchInput').setAttribute('aria-expanded', 'true');
+  $$('[data-place-index]', results).forEach(button => button.addEventListener('click', () => selectGooglePlace(places[Number(button.dataset.placeIndex)])));
+}
+async function renderEditorMap(place = null, results = []) {
+  const request = ++state.editorMapRequest;
+  const wrap = $('#editorMapWrap');
+  wrap.hidden = false;
+  $('#editorPlaceName').textContent = place?.name || (results.length ? `${results.length}개 장소를 지도에서 비교해요` : '지도에서 직접 골라도 좋아요');
+  $('#editorPlaceAddress').textContent = place?.address || '원하는 장소나 빈 위치를 눌러 핀을 선택하세요.';
+  try {
+    await loadGoogleMaps();
+    const [{ Map }, { AdvancedMarkerElement }] = await Promise.all([google.maps.importLibrary('maps'), google.maps.importLibrary('marker')]);
+    if (request !== state.editorMapRequest || !$('#scheduleDialog').open) return;
+    const position = place?.latitude != null ? { lat: Number(place.latitude), lng: Number(place.longitude) } : null;
+    if (!state.editorMap) {
+      state.editorMap = new Map($('#editorMap'), {
+        center: position || state.map?.getCenter() || { lat: 37.5665, lng: 126.9780 },
+        zoom: 14, mapId: 'DEMO_MAP_ID', mapTypeControl: false, streetViewControl: false,
+        fullscreenControl: false, gestureHandling: 'cooperative', clickableIcons: true
+      });
+      state.editorMap.addListener('click', event => handleEditorMapClick(event));
+    }
+    google.maps.event.trigger(state.editorMap, 'resize');
+    clearEditorMarkers();
+    const located = results.filter(result => result.location);
+    if (located.length) {
+      const bounds = new google.maps.LatLngBounds();
+      located.forEach(result => {
+        const index = results.indexOf(result);
+        const content = document.createElement('div');
+        content.className = 'search-map-pin'; content.textContent = String(index + 1);
+        const marker = new AdvancedMarkerElement({ map: state.editorMap, position: result.location, content, title: `${index + 1}. ${result.displayName}`, gmpClickable: true });
+        marker.addEventListener('gmp-click', () => selectGooglePlace(result));
+        state.editorResultMarkers.push(marker); bounds.extend(result.location);
+      });
+      if (located.length === 1) { state.editorMap.setCenter(located[0].location); state.editorMap.setZoom(15); }
+      else state.editorMap.fitBounds(bounds, 38);
+    } else if (position) {
+      state.editorMap.setCenter(position); state.editorMap.setZoom(16);
+      state.editorMarker = new AdvancedMarkerElement({ map: state.editorMap, position, title: place.name || '선택한 위치' });
+    } else if (state.map?.getCenter()) {
+      state.editorMap.setCenter(state.map.getCenter()); state.editorMap.setZoom(state.map.getZoom() || 14);
+    }
+  } catch (error) {
+    if (request !== state.editorMapRequest) return;
+    $('#editorPlaceAddress').textContent = '지도 미리보기를 불러오지 못했습니다. 검색 목록에서 장소를 선택하거나 장소 없이 저장할 수 있어요.';
+  }
+}
+async function placeFromMapEvent(event) {
+  if (event.placeId) {
+    const { Place } = await google.maps.importLibrary('places');
+    const place = new Place({ id: event.placeId });
+    await place.fetchFields({ fields: ['id', 'displayName', 'formattedAddress', 'location', 'googleMapsURI'] });
+    if (!place.location) throw new Error('이 장소의 위치를 불러오지 못했습니다. 다른 핀을 선택해 주세요.');
+    return place;
+  }
+  const location = event.latLng;
+  if (!location) return null;
+  const latitude = location.lat(), longitude = location.lng();
+  let address = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+  try {
+    const { Geocoder } = await google.maps.importLibrary('geocoding');
+    const { results } = await new Geocoder().geocode({ location });
+    address = results?.[0]?.formatted_address || address;
+  } catch { /* An exact coordinate can still be saved if geocoding is unavailable. */ }
+  return { id: null, displayName: '지도에서 선택한 위치', formattedAddress: address, location,
+    googleMapsURI: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}` };
+}
+async function handleEditorMapClick(event) {
+  event.stop?.();
+  clearTimeout(placeSearchTimer);
+  const request = ++state.placeResolveRequest;
+  state.editorMapRequest++;
+  $('#mapsLinkStatus').textContent = '선택한 위치를 확인하는 중…';
+  try {
+    const place = await placeFromMapEvent(event);
+    if (request !== state.placeResolveRequest || !$('#scheduleDialog').open || !place) return;
+    selectGooglePlace(place);
+  } catch (error) {
+    if (request === state.placeResolveRequest) $('#mapsLinkStatus').textContent = error.message || '장소를 확인하지 못했습니다.';
+  }
+}
+let mainMapPickRequest = 0;
+async function handleMainMapClick(event) {
+  event.stop?.();
+  const request = ++mainMapPickRequest;
+  const tripId = state.trip.id;
+  state.mapPickedPlace = null;
+  $('#mapPickCard').hidden = false;
+  $('#mapPickName').textContent = '장소 확인 중…';
+  $('#mapPickAddress').textContent = '';
+  $('#addMapPlace').disabled = true;
+  try {
+    const place = await placeFromMapEvent(event);
+    if (request !== mainMapPickRequest || tripId !== state.trip.id || !place) return;
+    state.mapPickedPlace = place;
+    $('#mapPickName').textContent = place.displayName;
+    $('#mapPickAddress').textContent = place.formattedAddress || '';
+    $('#addMapPlace').disabled = false;
+  } catch (error) {
+    if (request === mainMapPickRequest) { $('#mapPickCard').hidden = true; showToast(error.message || '장소를 확인하지 못했습니다.'); }
+  }
+}
+$('#dismissMapPick').addEventListener('click', dismissMapPick);
+function dismissMapPick() {
+  mainMapPickRequest++; state.mapPickedPlace = null; $('#mapPickCard').hidden = true;
+}
+$('#addMapPlace').addEventListener('click', () => {
+  const place = state.mapPickedPlace;
+  if (!place) return;
+  openSchedule();
+  if ($('#scheduleDialog').open) { selectGooglePlace(place); dismissMapPick(); }
+});
 
 function openNamedDialog(id) {
   if (id === "settlementDialog") renderReceipt();
@@ -1145,6 +1278,7 @@ function openNamedDialog(id) {
 $$("[data-open-dialog]").forEach(button => button.addEventListener("click", () => openNamedDialog(button.dataset.openDialog)));
 $$(".dialog-close, .dialog-close-text").forEach(button => button.addEventListener("click", () => button.closest("dialog").close()));
 $$("dialog").forEach(dialog => dialog.addEventListener("click", event => {
+  if (event.target !== dialog) return;
   const box = dialog.getBoundingClientRect();
   if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
 }));
@@ -1157,14 +1291,12 @@ $("#newTripButton").addEventListener("click", () => resetTripForm());
 $("#tripForm").addEventListener("submit", saveTrip);
 $("#deleteTripButton").addEventListener("click", deleteTrip);
 $("#splitType").addEventListener("change", event => { if (event.target.value === "custom") renderRatioFields(); toggleSettlement($("#settlementEnabled").checked); });
-$("#iconSearch").addEventListener("input", event => renderIcons(event.target.value));
-$("#iconCategory").addEventListener("change", () => { $("#iconSearch").value = ""; renderIcons(); });
 $("#toggleEndTime").addEventListener("change", event => toggleEndTime(event.target.checked));
 let placeSearchTimer;
 $("#placeSearchInput").addEventListener("input", event => {
   clearTimeout(placeSearchTimer);
   state.placeResolveRequest++; state.editorMapRequest++; state.pendingPlace = null;
-  $("#editorMapWrap").hidden = true;
+  clearEditorMarkers();
   $("#mapsUrlInput").value = "";
   $("#clearPlaceButton").hidden = !event.target.value;
   placeSearchTimer = setTimeout(() => searchGooglePlaces(event.target.value), 350);
@@ -1189,7 +1321,6 @@ $("#googleSignIn").addEventListener("click", signInWithGoogle);
 $("#signOutButton").addEventListener("click", signOut);
 
 $("#settlementEnabled").addEventListener("change",event=>toggleSettlement(event.target.checked));
-$("#openIconPicker").addEventListener("click",()=>{renderIcons();$("#iconDialog").showModal();});
 $("#openMemo").addEventListener("click",()=>{$("#memoEditor").value=$("#savedMemo").value;$("#memoDialog").showModal();});
 $("#saveMemo").addEventListener("click",()=>{$("#savedMemo").value=$("#memoEditor").value.trim();$("#memoSummary").textContent=$("#savedMemo").value || "＋ 세부 메모 추가";$("#memoDialog").close();});
 $("#categoryDropdown").addEventListener("click",()=>{const open=$("#categoryMenu").hidden;$("#categoryMenu").hidden=!open;$("#categoryDropdown").setAttribute("aria-expanded",String(open));});
@@ -1203,10 +1334,8 @@ $("#avatarPrevious").addEventListener("click",()=>{state.avatarPage=Math.max(0,s
 $("#avatarNext").addEventListener("click",()=>{state.avatarPage=Math.min(7,state.avatarPage+1);renderAvatarGrid();});
 $("#travelerFilter").addEventListener("change",event=>{state.travelerFilter=event.target.value;state.selectedId=null;render();});
 $("#placeSearchInput").addEventListener("keydown",event=>{if(event.key==='Enter'){event.preventDefault();clearTimeout(placeSearchTimer);searchGooglePlaces(event.target.value);}if(event.key==='Escape'){$("#placeSearchResults").hidden=true;event.stopPropagation();}});
-$("#scheduleDialog").addEventListener("close",()=>{state.placeResolveRequest++;state.editorMapRequest++;clearTimeout(placeSearchTimer);closeCategoryMenu();});
+$("#scheduleDialog").addEventListener("close",()=>{state.placeResolveRequest++;state.editorMapRequest++;clearTimeout(placeSearchTimer);clearEditorMarkers();closeCategoryMenu();});
 $("#scheduleDialog").addEventListener("click",event=>{if(!event.target.closest('.category-picker'))closeCategoryMenu();});
-fillTimeOptions();
-renderIcons();
 renderCategories();
 render();
 Promise.allSettled([initMap(), initializeAuth()]);

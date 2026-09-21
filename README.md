@@ -33,3 +33,15 @@ Character artwork: Adventurer by Lisa Wischofsky, customized via DiceBear 9.4.3,
 - The optional-place and Airy traveler/settlement database migrations were already applied remotely and were not rerun. Match migration names and schema state before applying the bundled SQL.
 - Initial authenticated workspace loading retries transient failures up to three times and coalesces simultaneous sign-in events. Loading and error messages are not reported as successful saves.
 - Mobile keeps a bounded, scrollable agenda above a fixed-height map. Schedule editor content scrolls while the close control stays visible.
+
+## Captain Beer update (2026-09-21)
+
+The current UI uses the supplied Captain Beer logo/social card, three clay guide poses, a monochrome interface, and 400 clay traveler portraits with stable avatar IDs. Brand rules and generation prompts live in `docs/brand/`.
+
+Time fields open an hour/minute picker. Itinerary icons and the trip destination field have been removed. Existing trip destination metadata is preserved on edits. Hovering an itinerary no longer changes the map.
+
+The main map offers “이 장소로 일정 추가” on POI/point selection. The editor shows numbered search results on a map and accepts POI or coordinate selection. Place details can collapse/expand on PC and mobile. Map interactions use Google's supported POI click events: https://developers.google.com/maps/documentation/javascript/examples/event-poi
+
+Run `npm ci && npm test` for the utility and DOM interaction suites. The interaction suite mocks Google Maps and Supabase and does not write user data. GitHub Pages runs both suites before deployment.
+
+`examples/uk-parents-5days.json` contains a 25-item, London-based 4-night/5-day sample with breaks and 3 travelers. Dates are illustrative (2026-10-12–16), times are local to London, and no bookings or payments are implied. The requested account received this example separately; the JSON contains no account credentials or private account IDs.
