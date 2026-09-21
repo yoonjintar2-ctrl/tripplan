@@ -551,9 +551,7 @@ function render() {
   $("#dayTabs").scrollTop=0;
   if(state.renderedTabsTrip!==state.trip.id){$("#dayTabs").scrollLeft=0;state.renderedTabsTrip=state.trip.id;}
   $$("[data-date]").forEach(button => button.addEventListener("click", () => {
-    state.activeDate = button.dataset.date;
-    state.selectedId = null;
-    render();
+    selectDay(button.dataset.date);
   }));
 
   $("#itemCount").textContent = `${items.length}개의 일정`;
@@ -610,11 +608,12 @@ function updatePlaceCard(item) {
   const items = activeItems();
   const index = item ? items.findIndex(value => value.id === item.id) : -1;
   $("#routeCounter").textContent = `${index >= 0 ? index + 1 : 0} / ${items.length}`;
-  $("#previousStop").disabled = index <= 0;
-  $("#nextStop").disabled = !items.length || index >= items.length - 1;
+  $("#previousStop").disabled = state.dayTransitionBusy || (index <= 0 && state.activeDate <= state.trip.start_date);
+  $("#nextStop").disabled = state.dayTransitionBusy || ((!items.length || index >= items.length - 1) && state.activeDate >= state.trip.end_date);
   const searchPreview=Boolean(item && state.mapSearchItem?.id===item.id);
   $('#mapSearchPlaceActions').hidden=!searchPreview;
   $('#placeCard').classList.toggle('is-search-preview',searchPreview);
+  $(searchPreview?'#mapSearchPlaceActions':'#placeCardDetails').append($('#placeMore'));
   $("#placeCard").hidden = !item;
   state.previewItemId = item?.id || null;
   $('#placeMore').hidden=!item?.maps_url;
@@ -759,7 +758,10 @@ async function renderMap() {
   cancelAnimationFrame(state.routeAnimation);
   const duration=sameDate && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 850:0,start=performance.now();
   const animate=now=>{const fraction=duration?Math.min(1,(now-start)/duration):1,eased=fraction*fraction*(3-2*fraction);moves.forEach(({marker,from,to})=>{marker.position={lat:from.lat+(to.lat-from.lat)*eased,lng:from.lng+(to.lng-from.lng)*eased};});if(fraction<1)state.routeAnimation=requestAnimationFrame(animate);};state.routeAnimation=requestAnimationFrame(animate);
-  if(selected&&itemPosition(selected))panMapToItem(selected,false);else fitActiveBounds(items);
+  const viewKey=state.trip.id+':'+state.activeDate;
+  if(state.fitDayRequested===viewKey){fitActiveBounds(items);state.fitDayRequested=null;}
+  else if(state.mapViewKey!==viewKey){if(selected&&itemPosition(selected))panMapToItem(selected,false);else fitActiveBounds(items);}
+  state.mapViewKey=viewKey;
 }
 function fitActiveBounds(items = activeItems().filter(itemPosition)) {
   if (!state.mapReady || !items.length) return;
@@ -776,15 +778,7 @@ async function panMapToItem(item, animate = true) {
   if (!state.mapReady) return;
   const position = itemPosition(item);
   if (!position) return;
-  const center = state.map.getCenter();
-  const far = center && Math.hypot(center.lat() - position.lat, center.lng() - position.lng) > .45;
-  if (animate && far) {
-    state.map.setZoom(Math.min(state.map.getZoom() || 12, 7));
-    await sleep(300);
-  }
   state.map.panTo(position);
-  if (animate) await sleep(far ? 650 : 320);
-  if ((state.map.getZoom() || 0) < 14) state.map.setZoom(14);
 }
 function selectStop(id, animate = false) {
   clearMapSearchPlace();
@@ -993,7 +987,7 @@ async function searchGooglePlaces(rawQuery) {
 
 async function saveTransportMode(itemId,mode){
   if(!canEdit())throw Error('이 여행을 수정할 권한이 없습니다.');
-  if(!['WALKING','DRIVING','OTHER'].includes(mode))throw Error('지원하지 않는 이동수단입니다.');
+  if(!['WALKING','DRIVING','TRANSIT','OTHER'].includes(mode))throw Error('지원하지 않는 이동수단입니다.');
   const tripId=state.trip.id,item=state.items.find(i=>i.id===itemId);
   if(!item)throw Error('일정을 다시 선택해 주세요.');
   if(isGuestTrip()){
@@ -1965,16 +1959,36 @@ $("#clearPlaceButton").addEventListener("click", () => clearPlaceSelection());
 $("#scheduleForm").elements.name.addEventListener("input", event => { event.target.dataset.autoFilled = "false"; });
 $("#addCategory").addEventListener("click", addCategory);
 $("#newCategory").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); addCategory(); } });
-$("#previousStop").addEventListener("click", () => {
-  const items = activeItems();
-  const index = items.findIndex(item => item.id === state.selectedId);
-  if (index > 0) selectStop(items[index - 1].id, true);
-});
-$("#nextStop").addEventListener("click", () => {
-  const items = activeItems();
-  const index = items.findIndex(item => item.id === state.selectedId);
-  if (index < items.length - 1) selectStop(items[index + 1].id, true);
-});
+let dayTransitionToken=0;
+function selectDay(date){
+  dayTransitionToken++;state.dayTransitionBusy=false;$('#dayTransition').hidden=true;
+  clearMapSearchPlace();dismissMapPick();state.activeDate=date;state.selectedId=null;state.mobileExpandedId=null;
+  const clock=clockParts();state.clockTrip=state.trip.id;state.clockSelectionKey=state.trip.id+'|'+clock.date+' '+clock.time;
+  state.fitDayRequested=state.trip.id+':'+date;render();
+}
+async function navigateStop(direction){
+  if(state.dayTransitionBusy)return;
+  const items=activeItems(),index=items.findIndex(i=>i.id===state.selectedId),next=index+direction;
+  if(index<0&&items.length){selectStop((direction>0?items[0]:items.at(-1)).id,true);return;}
+  if(next>=0&&next<items.length){selectStop(items[next].id,true);return;}
+  const date=new Date(state.activeDate+'T12:00:00');date.setDate(date.getDate()+direction);
+  const target=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+  if(target<state.trip.start_date||target>state.trip.end_date)return;
+  const token=++dayTransitionToken,tripId=state.trip.id,origin=state.activeDate,overlay=$('#dayTransition');
+  state.dayTransitionBusy=true;$('#previousStop').disabled=true;$('#nextStop').disabled=true;
+  overlay.textContent=direction>0?'다음날':'하루 전';overlay.hidden=false;
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  try{
+    if(!reduced)await sleep(450);
+    if(token!==dayTransitionToken||state.trip.id!==tripId||state.activeDate!==origin)return;
+    clearMapSearchPlace();dismissMapPick();state.activeDate=target;state.mobileExpandedId=null;
+    const clock=clockParts();state.clockTrip=tripId;state.clockSelectionKey=tripId+'|'+clock.date+' '+clock.time;
+    const day=activeItems();state.selectedId=(direction>0?day[0]:day.at(-1))?.id||null;render();
+    if(!reduced)await sleep(300);
+  }finally{if(token===dayTransitionToken){overlay.hidden=true;state.dayTransitionBusy=false;updatePlaceCard(state.mapSearchItem||selectedItem());}}
+}
+$('#previousStop').addEventListener('click',()=>navigateStop(-1));
+$('#nextStop').addEventListener('click',()=>navigateStop(1));
 $("#imageDialog .image-close").addEventListener("click", () => $("#imageDialog").close());
 $("#copyInvite").addEventListener("click", copyInvite);
 $("#googleSignIn").addEventListener("click", signInWithGoogle);

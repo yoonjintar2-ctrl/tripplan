@@ -32,6 +32,7 @@ const fresh=[{...a,id:'c',longitude:129},{...b,id:'d',longitude:130}];
 await R.update(map,fresh,'toggle','d',opts);
 let badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;
 assert.match(badge.textContent,/차량 10분/);badge.click();await settle();
+assert.equal(saved.at(-1).mode,'TRANSIT');badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;assert.match(badge.textContent,/대중/);badge.click();await settle();
 assert.equal(saved.at(-1).mode,'OTHER');badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;assert.equal(badge.textContent,'기타 이동수단');assert(polylines.some(p=>p.map&&p.icons));draw(1);assert.equal(markers.filter(m=>m.map&&m.content.className==='captain-journey').at(-1).content.dataset.mode,'walk');badge.click();await settle();
 assert.equal(saved.at(-1).mode,'WALKING');assert.equal(saved.at(-1).id,'d');
 badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;assert.match(badge.textContent,/도보 40분/);
@@ -40,5 +41,9 @@ badge.click();await settle();assert.equal(saved.at(-1).mode,'DRIVING');draw(2);a
 const count=saved.length;saveFail=true;badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;badge.click();await settle();assert.equal(saved.length,count);assert.match(badge.textContent,/차량/);assert.equal(errors.at(-1),'save failed');saveFail=false;
 await R.update(map,[fresh[0],{...fresh[1],transport_mode:'WALKING'}],'reload','d',opts);assert.match(markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content.textContent,/도보 40분/);
 let fits=0;map.fitBounds=()=>{fits++};await R.update(map,[fresh[0]],'flight','c',{firstDay:true});draw(3);const flight=markers.filter(m=>m.map&&m.content.className==='captain-journey').at(-1);assert.equal(flight.position.lng,129);assert.equal(flight.content.dataset.mode,'flight');assert.match(flight.content.style.transform,/-180/);assert.equal(fits,0);
+fail=true;
+await R.update(map,[{...a,id:'e',longitude:131},{...b,id:'f',longitude:132,transport_mode:'DRIVING'}],'no-transit','f',opts);
+badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;
+badge.click();await settle();assert.equal(saved.at(-1).mode,'OTHER');
 console.log('PASS: walk/drive/other cycle, dotted walking fallback, no fictitious duration, preference persistence, slower walk and local plane arrival');
 })().catch(e=>{console.error(e);process.exitCode=1});

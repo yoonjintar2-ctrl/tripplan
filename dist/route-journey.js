@@ -18,7 +18,7 @@
   return routes?.[0]?normalize(routes[0],mode):null;
  }
  const direct=(a,b)=>({path:[pos(a),pos(b)],parts:[{path:[pos(a),pos(b)],mode:'walk'}],mode:'other',dashed:true,seconds:null,warnings:[]});
- const nextMode=mode=>mode==='walk'?'DRIVING':mode==='drive'?'OTHER':'WALKING';
+ const nextMode=mode=>mode==='walk'?'DRIVING':mode==='drive'?'TRANSIT':mode==='transit'||mode==='subway'?'OTHER':'WALKING';
  async function choose(a,b,fetchRoute=request){
   const jump=direct(a,b);
   let walk;try{walk=await fetchRoute(a,b,'WALKING');}catch(error){if(/denied|not.*enabled|unavailable|billing|key/i.test(error.message||''))return jump;}
@@ -32,7 +32,7 @@
   if(mode==='OTHER')return direct(a,b);
   const key=JSON.stringify([pos(a),pos(b),mode||null]),saved=cache.get(key);
   if(saved&&Date.now()-saved.time<300000)return (await saved.promise)||direct(a,b);
-  const promise=['WALKING','DRIVING'].includes(mode)?request(a,b,mode).catch(()=>null):choose(a,b);cache.set(key,{time:Date.now(),promise});
+  const promise=['WALKING','DRIVING','TRANSIT'].includes(mode)?request(a,b,mode).catch(()=>null):choose(a,b);cache.set(key,{time:Date.now(),promise});
   if(cache.size>250)cache.delete(cache.keys().next().value);
   return (await promise)||direct(a,b);
  }
@@ -108,13 +108,14 @@
    const badge=document.createElement('button');badge.type='button';badge.className='route-time-badge';badge.textContent=({walk:'도보',drive:'차량',subway:'대중',transit:'대중'})[l.mode]+' '+Math.max(1,Math.ceil(l.seconds/60))+'분';badge.title='누르면 도보 / 차량 경로로 변경';
    if(l.dashed)badge.textContent='기타 이동수단';
    badge.title=l.dashed?'실제 경로가 아닌 직선 연결 · 누르면 도보':'누르면 다음 이동수단으로 변경';
-   badge.disabled=!options.onModeChange;badge.setAttribute('aria-label',badge.textContent+' · '+({WALKING:'도보',DRIVING:'차량',OTHER:'기타 이동수단'})[nextMode(l.mode)]+'로 변경');
+   badge.disabled=!options.onModeChange;badge.setAttribute('aria-label',badge.textContent+' · '+({WALKING:'도보',DRIVING:'차량',TRANSIT:'대중교통',OTHER:'기타 이동수단'})[nextMode(l.mode)]+'로 변경');
    badge.addEventListener('click',async event=>{
     event.stopPropagation();if(badge.disabled||mine!==epoch)return;badge.disabled=true;
     const preference=items[index+1].transport_mode;
-    const next=preference?({WALKING:'DRIVING',DRIVING:'OTHER',OTHER:'WALKING'})[preference]:nextMode(l.mode);
+    let next=preference?({WALKING:'DRIVING',DRIVING:'TRANSIT',TRANSIT:'OTHER',OTHER:'WALKING'})[preference]:nextMode(l.mode);
     try{
-     const candidate=await leg(items[index],items[index+1],next);
+     let candidate=await leg(items[index],items[index+1],next);
+     if(next==='TRANSIT'&&candidate.dashed){next='OTHER';candidate=await leg(items[index],items[index+1],next);}
      if(mine!==epoch)return;
      if(candidate.dashed&&next!=='OTHER')options.onError?.('경로를 찾지 못해 시간 없이 점선으로 연결합니다.');
      await options.onModeChange(items[index+1].id,next);

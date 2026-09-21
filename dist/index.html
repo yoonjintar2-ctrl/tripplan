@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./airy.css">
   <link rel="stylesheet" href="./captain.css">
-  <link rel="stylesheet" href="./studio.css?v=21">
+  <link rel="stylesheet" href="./studio.css?v=22">
 </head>
 <body>
   <div class="app-shell">
@@ -66,12 +66,12 @@
             <div id="mapSearchPanel"><form id="mapSearchForm" role="search"><input id="mapSearchInput" type="search" aria-label="지도에서 장소 검색" placeholder="어디로 떠날까요? 장소 검색" autocomplete="off" maxlength="200"><button type="submit">검색</button><button id="closeMapSearch" type="button" aria-label="검색 닫기">×</button></form><div id="mapSearchStatus" role="status"></div><div id="mapSearchResults" aria-label="장소 검색 결과" hidden></div></div>
           </section>
           <div class="route-controls">
-            <button type="button" id="previousStop" aria-label="이전 일정">←</button>
-            <span id="routeCounter">0 / 0</span>
-            <button type="button" id="nextStop" aria-label="다음 일정">→</button>
+            <button type="button" id="previousStop" aria-label="이전 일정"><span>←</span><small>이전 일정</small></button>
+            <span id="routeCounter" hidden>0 / 0</span>
+            <button type="button" id="nextStop" aria-label="다음 일정"><span>→</span><small>다음 일정</small></button>
           </div>
         </div>
-        <div class="captain-map-hint"><span>장소를 눌러 일정에 담아보세요</span></div>
+        <div id="dayTransition" role="status" hidden></div><div class="captain-map-hint"><span>장소를 눌러 일정에 담아보세요</span></div>
 
 
         <aside id="mapPickCard" class="map-pick-card" aria-live="polite" hidden><button id="dismissMapPick" class="pick-dismiss" type="button" aria-label="선택한 장소 닫기">×</button><strong id="mapPickName"></strong><p id="mapPickAddress"></p><button id="addMapPlace" type="button" class="button button-primary">이 장소로 일정 추가</button><div id="mapPickInfo"></div></aside>
@@ -186,8 +186,8 @@
   <script src="./avatar-landmarks.js?v=4" defer></script>
   <script src="./avatar-studio.js?v=5" defer></script>
   <script src="./captain-map.js?v=5" defer></script>
-  <script src="./route-journey.js?v=3" defer></script>
+  <script src="./route-journey.js?v=4" defer></script>
   <script src="./place-info.js?v=1" defer></script>
-  <script type="module" src="./app.js?v=24"></script>
+  <script type="module" src="./app.js?v=25"></script>
 </body>
 </html>
