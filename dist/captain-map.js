@@ -1,9 +1,11 @@
 /* Small, non-interactive character overlays follow the same ordered route as the map. */
 (() => {
   const ASSETS='./assets/studio/';
-  let map=null,marker=null,signature='',route=[],frame=0,lastTime=0,elapsed=0;
+  let map=null,marker=null,signature='',route=[],frame=0,lastTime=0,elapsed=0,revision=0;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
-  let paused=reduced.matches;
+  let paused=reduced.matches,selected=false,atlasReady=null;
+  function preload(){if(!atlasReady)atlasReady=new Promise((resolve,reject)=>{const image=new Image();image.onload=async()=>{try{await image.decode?.();resolve(image);}catch(e){atlasReady=null;reject(e);}};image.onerror=()=>{atlasReady=null;reject(Error('Captain sprite unavailable'));};image.src=ASSETS+'captain-motion-atlas.webp';});return atlasReady;}
+  function setSelected(value){selected=Boolean(value);if(marker)marker.map=selected?null:map;if(selected)stop();else if(marker&&!paused&&!document.hidden&&!frame)frame=requestAnimationFrame(tick);}
   try{paused=paused||localStorage.getItem('captain-motion')==='paused';}catch{}
   const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
   const position=item=>({lat:Number(item.latitude),lng:Number(item.longitude)});
@@ -15,7 +17,7 @@
     node.setAttribute('aria-label',`${number}번 일정${selected?' · 선택 중':''}`);return node;
   }
   function content(){const el=document.createElement('div');el.className='captain-walker';el.setAttribute('aria-hidden','true');el.innerHTML='<span class="captain-ground"></span><span class="captain-sprite"></span>';return el;}
-  function paint(action,index,direction=1){if(!marker?.content)return;const node=marker.content.querySelector('.captain-sprite');node.style.backgroundImage=`url("${ASSETS}captain-${action}-${index}.webp")`;node.style.transform=`scaleX(${direction})`;marker.content.dataset.action=action;}
+  function paint(action,index,direction=1){if(!marker?.content)return;const node=marker.content.querySelector('.captain-sprite');const key=action+index+direction;if(node.dataset.frame===key)return;node.dataset.frame=key;const row={walk:0,map:1,telescope:2}[action];node.style.backgroundPosition=`${index*100/3}% ${row*50}%`;node.style.transform=`scaleX(${direction})`;marker.content.dataset.action=action;}
   function syncControls(){
     document.querySelector('.map-panel')?.classList.toggle('motion-paused',paused);
     const b=document.getElementById('toggleCaptainMotion');if(b){b.setAttribute('aria-pressed',String(!paused));b.textContent=paused?'▶ 캡틴 산책':'Ⅱ 움직임 멈춤';}
@@ -39,26 +41,27 @@
     return {position:items.at(-1),action:'telescope',index:Math.min(3,Math.floor(t/875)),direction:1};
   }
   function tick(now){
-    if(paused||document.hidden||!marker||!route.length){stop();return;}
+    if(paused||selected||document.hidden||!marker||!route.length){stop();return;}
     if(lastTime)elapsed+=Math.min(now-lastTime,100);lastTime=now;
     const state=sample(route,elapsed);marker.position=state.position;paint(state.action,state.index,state.direction);
     frame=requestAnimationFrame(tick);
   }
-  async function setRoute(nextMap,items,context){
+  async function setRoute(nextMap,items,context,selectedId=null){
+    setSelected(items.some(i=>i.id===selectedId));
     const filtered=items.filter(item=>Number.isFinite(Number(item.latitude))&&Number.isFinite(Number(item.longitude))&&item.latitude!=null&&item.longitude!=null);
     const nextSignature=context+'|'+filtered.map(i=>i.id+':'+i.latitude+':'+i.longitude).join('|');
     if(nextSignature===signature&&map===nextMap)return;
-    signature=nextSignature;map=nextMap;stop();route=filtered.map(position);elapsed=0;
+    const mine=++revision;signature=nextSignature;map=nextMap;stop();route=filtered.map(position);elapsed=0;
     if(marker){marker.map=null;marker=null;}syncControls();if(!route.length)return;
-    const mine=signature,{AdvancedMarkerElement}=await google.maps.importLibrary('marker');if(mine!==signature)return;
-    marker=new AdvancedMarkerElement({map,position:route[0],content:content(),title:'동선을 따라 걷는 캡틴비어',zIndex:80,gmpClickable:false});
-    paint('map',2);if(!paused)frame=requestAnimationFrame(tick);
+    let AdvancedMarkerElement;try{[{AdvancedMarkerElement}]=await Promise.all([google.maps.importLibrary('marker'),preload()]);}catch(error){if(mine===revision)signature='';console.warn(error.message);return;}if(mine!==revision)return;
+    marker=new AdvancedMarkerElement({map:selected?null:map,position:route[0],content:content(),title:'동선을 따라 걷는 캡틴비어',zIndex:80,gmpClickable:false});
+    paint('map',2);if(!paused&&!selected)frame=requestAnimationFrame(tick);
   }
   function init(){
-    document.getElementById('toggleCaptainMotion')?.addEventListener('click',()=>{paused=!paused;try{localStorage.setItem('captain-motion',paused?'paused':'playing');}catch{}syncControls();if(paused)stop();else if(marker&&!frame)frame=requestAnimationFrame(tick);});
-    document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else if(!paused&&marker&&!frame)frame=requestAnimationFrame(tick);});
+    document.getElementById('toggleCaptainMotion')?.addEventListener('click',()=>{paused=!paused;try{localStorage.setItem('captain-motion',paused?'paused':'playing');}catch{}syncControls();if(paused)stop();else if(marker&&!selected&&!frame)frame=requestAnimationFrame(tick);});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else if(!paused&&!selected&&marker&&!frame)frame=requestAnimationFrame(tick);});
     reduced.addEventListener?.('change',e=>{if(e.matches){paused=true;stop();syncControls();}});syncControls();
   }
-  window.CaptainMap={markerContent,setRoute,sample,stop};
+  window.CaptainMap={markerContent,setRoute,setSelected,sample,stop};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();

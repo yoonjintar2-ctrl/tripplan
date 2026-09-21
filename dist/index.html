@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./airy.css">
   <link rel="stylesheet" href="./captain.css">
-  <link rel="stylesheet" href="./studio.css">
+  <link rel="stylesheet" href="./studio.css?v=11">
 </head>
 <body>
   <div class="app-shell">
@@ -56,6 +56,7 @@
       </section>
 
       <section class="map-panel" aria-label="여행 동선 지도">
+        <div class="map-viewport">
         <div id="googleMap" class="google-map"></div>
         <div class="map-toolbar">
           <span class="map-badge" id="mapDayLabel">DAY 01 · 동선</span>
@@ -67,7 +68,7 @@
         </div>
         <div class="captain-map-hint"><span>장소를 눌러 일정에 담아보세요</span></div>
         <button type="button" id="toggleCaptainMotion" class="captain-motion-button" aria-pressed="true">Ⅱ 움직임 멈춤</button>
-        <div class="captain-map-frame" aria-hidden="true"><img class="frame-rear" src="./assets/studio/captain-rear.webp" alt=""><img class="frame-compass" src="./assets/studio/captain-compass.webp" alt=""><img class="frame-seated" src="./assets/studio/captain-seated.webp" alt=""></div>
+
         <aside id="mapPickCard" class="map-pick-card" aria-live="polite" hidden><button id="dismissMapPick" class="pick-dismiss" type="button" aria-label="선택한 장소 닫기">×</button><strong id="mapPickName"></strong><p id="mapPickAddress"></p><button id="addMapPlace" type="button" class="button button-primary">이 장소로 일정 추가</button></aside>
         <div id="routeLegend" class="route-legend" aria-label="동행별 동선"></div>
         <article class="place-card" id="placeCard">
@@ -83,6 +84,14 @@
 
           </div>
         </article>
+        </div>
+        <div class="captain-map-frame" aria-hidden="true">
+          <picture class="captain-frame-art">
+            <source media="(max-width: 600px)" srcset="./assets/studio/captain-frame-mobile.webp?v=11">
+            <source media="(min-width: 1280px)" srcset="./assets/studio/captain-frame-flat.webp?v=11">
+            <img class="captain-frame-figure" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" width="1200" height="800" decoding="async" draggable="false">
+          </picture>
+        </div>
       </section>
     </main>
   </div>
@@ -93,7 +102,7 @@
       <input name="itemId" type="hidden"><input name="memo" id="savedMemo" type="hidden">
       <div class="captain-editor-note"><img src="./assets/captain/guide-map.webp" alt="" width="48" height="60"><p>어디로 갈까요?<small>검색 결과와 지도를 함께 보며 골라봐요.</small></p></div>
       <div class="airy-fields">
-        <div class="name-section"><label class="airy-label" for="scheduleName">일정 / 장소 이름 <small class="required-tag">필수</small></label><div class="name-input-row"><input id="scheduleName" class="schedule-name" name="name" maxlength="100" placeholder="어떤 순간을 더할까요?" required></div></div>
+        <div class="name-section"><label class="airy-label" for="scheduleName">일정 이름 <small class="required-tag">필수</small></label><div class="name-input-row"><input id="scheduleName" class="schedule-name" name="name" maxlength="100" placeholder="어떤 순간을 더할까요?" required></div></div>
         <div class="schedule-datetime"><div><label class="airy-label" for="scheduleDate">날짜 <small class="required-tag">필수</small></label><input id="scheduleDate" name="date" type="date" required></div><div><div class="time-label-row"><label class="airy-label" for="startTimeButton">시작 시간</label><label class="inline-switch"><input id="toggleEndTime" type="checkbox" aria-controls="endTimeFields">종료시간</label></div><div class="time-input-row"><input id="startTime" name="startTime" type="hidden"><button id="startTimeButton" class="time-select-button" type="button" data-time-picker="start" aria-haspopup="dialog" aria-label="시작 시간 선택"><span>시간 미정</span><span aria-hidden="true">⌄</span></button><div id="endTimeFields" class="end-time-input" hidden><span aria-hidden="true">—</span><input id="endTime" name="endTime" type="hidden"><button id="endTimeButton" class="time-select-button" type="button" data-time-picker="end" aria-haspopup="dialog" aria-label="종료 시간 선택"><span>시간 선택</span><span aria-hidden="true">⌄</span></button></div></div></div></div>
         <div class="place-search-field"><label class="airy-label" for="placeSearchInput">Google 지도 장소 <small>선택</small></label><div class="place-search-control"><input id="placeSearchInput" type="search" autocomplete="off" placeholder="장소 검색 또는 구글맵 링크 붙여넣기" aria-controls="placeSearchResults" aria-expanded="false"><button id="clearPlaceButton" type="button" aria-label="장소 선택 해제" hidden>×</button></div><div class="place-search-results" id="placeSearchResults" role="listbox" hidden></div><input name="mapsUrl" id="mapsUrlInput" type="hidden"><small class="field-hint" id="mapsLinkStatus" role="status">장소 없이도 저장할 수 있어요.</small><div id="editorMapWrap" class="editor-map-wrap" hidden><div id="editorMap" aria-label="선택한 장소 지도"></div><div class="editor-place-info"><strong id="editorPlaceName"></strong><span id="editorPlaceAddress"></span><small>번호 핀이나 지도 속 장소를 눌러 선택하세요.</small></div></div></div>
         <div class="category-memo-row"><div class="category-picker"><label class="airy-label" id="categoryLabel">카테고리</label><input type="hidden" name="category" id="categorySelect"><button id="categoryDropdown" class="field-button" type="button" aria-labelledby="categoryLabel categoryValue" aria-expanded="false" aria-controls="categoryMenu"><span id="categoryValue">선택 안 함</span><span>⌄</span></button><div id="categoryMenu" class="category-menu" hidden><div id="categoryOptions"></div><button type="button" id="openCategoryManager">⚙ 카테고리 관리</button></div></div><div><span class="airy-label">세부 메모 <small>선택</small></span><button class="field-button memo-add" id="openMemo" type="button"><span id="memoSummary">＋ 세부 메모 추가</span></button></div></div>
@@ -167,8 +176,9 @@
     <div class="look-controls"><div id="lookOptions"></div><details class="look-fit"><summary>위치 미세 조정</summary><label>조정할 소품<select id="lookFitCategory"></select></label><label>좌우<input id="lookFit-x" type="range" min="-12" max="12" value="0"></label><label>높이<input id="lookFit-y" type="range" min="-12" max="12" value="0"></label><label>크기<input id="lookFit-scale" type="range" min="75" max="125" value="100"></label></details></div></div>
     <footer class="look-footer"><button type="button" id="lookReset" class="button button-secondary">꾸미기 초기화</button><button type="button" id="lookApply" class="button button-primary">이 모습으로 선택</button></footer>
   </dialog>
-  <script src="./avatar-studio.js" defer></script>
-  <script src="./captain-map.js" defer></script>
-  <script type="module" src="./app.js"></script>
+  <script src="./avatar-landmarks.js?v=4" defer></script>
+  <script src="./avatar-studio.js?v=4" defer></script>
+  <script src="./captain-map.js?v=4" defer></script>
+  <script type="module" src="./app.js?v=5"></script>
 </body>
 </html>

@@ -62,7 +62,7 @@ assert.equal(w.document.querySelectorAll('#avatarGrid button').length,25);el('[d
 calls.look.apply({avatar:'female-001',appearance:{variant:'extra-female-001',hair:'white',glasses:'gold-glasses',hat:'beret',adjustments:{}}});
 await run('saveTrip({preventDefault(){},currentTarget:document.querySelector("#tripForm")})');const appearance=calls.rpc.at(-1).args.p_travelers[0].appearance;assert.equal(appearance.hair,'white');assert.equal(appearance.variant,'extra-female-001');assert.equal(appearance.glasses,'gold-glasses');assert.equal(appearance.hat,'beret');
 // The popup follows its click and flips to remain within the map panel.
-el('.map-panel').getBoundingClientRect=()=>({left:0,top:0,width:800,height:600});
+el('.map-viewport').getBoundingClientRect=()=>({left:0,top:0,width:800,height:600});
 run('state.mapPickPosition=null;state.mapPickPixel={x:200,y:300};document.querySelector("#mapPickCard").hidden=false;positionMapPick()');assert.equal(el('#mapPickCard').style.left,'216px');assert.equal(el('#mapPickCard').dataset.side,'right');
 run('state.mapPickPixel={x:790,y:300};positionMapPick()');assert.equal(el('#mapPickCard').dataset.side,'left');assert(parseFloat(el('#mapPickCard').style.left)+218<=790);
 // Today's clock selects the active stop, respects manual browsing, and resumes.
@@ -70,5 +70,31 @@ run(`state.trip.start_date=todayString();state.trip.end_date=todayString();state
 assert.equal(run('state.selectedId'),'now');assert(w.document.body.classList.contains('trip-on-air'));assert.equal(el('#captainCountdown').textContent,'ON AIR');assert(el('.schedule-now'));
 run('selectStop("later");tickTripClock()');assert.equal(run('state.selectedId'),'later');assert.equal(run('state.followClock'),false);el('#followCurrentSchedule').click();assert.equal(run('state.selectedId'),'now');
 console.log('PASS: appearance selection and save payload, anchored popup, ON AIR timeline and manual-follow controls.');
+// Per-row controls load and delete the targeted trip without changing unrelated trips.
+assert.equal(el('label[for="scheduleName"]').textContent.trim(),'일정 이름 필수');
+run(`state.trip={id:'trip',owner_id:'owner',title:'현재 여행',travelers:[]};state.trips=[state.trip,{id:'other',owner_id:'owner',title:'다른 여행'},{id:'shared',owner_id:'friend',title:'공유 여행'}];renderTripList();`);
+assert.equal(el('[data-load-trip="other"]').parentElement,el('[data-share-trip="other"]').parentElement);
+assert.equal(el('[data-delete-trip="other"]').parentElement,el('[data-share-trip="other"]').parentElement);
+assert(el('[data-delete-trip="shared"]').disabled);
+run(`state.switched=[];switchTrip=async id=>{state.switched.push(id);state.trip=state.trips.find(t=>t.id===id)};`);
+el('[data-load-trip="other"]').click();await tick();assert.equal(run('state.trip.id'),'other');
+run(`state.deleted=[];supabase.from=()=>({delete(){return this},eq(k,v){if(k==='id')state.deleted.push(v);return this},then(resolve){return Promise.resolve({error:null}).then(resolve)}});loadTripList=async()=>{state.trips=state.trips.filter(t=>!state.deleted.includes(t.id))};`);
+w.confirm=()=>true;await run('deleteTrip("trip")');assert.equal(run('state.trip.id'),'other');assert.equal(run('state.deleted[0]'),'trip');
+await run('deleteTrip("shared")');assert.equal(run('state.deleted.length'),1);
+await run('deleteTrip("other")');assert.equal(run('state.trip.id'),'shared');
+console.log('PASS: row-level load/delete actions, ownership guard and current-trip preservation');
+// The flat map viewport owns both the live map and its popup, independent of the Captain rail.
+assert.equal(el('#googleMap').parentElement,el('.map-viewport'));
+assert.equal(el('#mapPickCard').parentElement,el('.map-viewport'));
+assert.equal(el('.captain-map-frame').parentElement,el('.map-panel'));
+assert.equal(w.document.querySelectorAll('.captain-map-frame img').length,1);
+el('.map-viewport').getBoundingClientRect=()=>({left:114,top:66,width:500,height:450});
+run('state.mapPickOverlay=null;document.querySelector("#mapPickCard").hidden=false;anchorMapPick({domEvent:{clientX:314,clientY:266}})');
+assert.equal(run('state.mapPickPixel.x'),200);assert.equal(run('state.mapPickPixel.y'),200);
+assert.equal(el('#mapPickCard').style.left,'216px');
+run('anchorMapPick({domEvent:{clientX:604,clientY:266}})');
+assert.equal(el('#mapPickCard').dataset.side,'left');assert(parseFloat(el('#mapPickCard').style.left)+218<=500);
+console.log('PASS: flat Google Maps viewport, decorative frame isolation and offset popup anchoring');
+
 await tick();await tick();dom.window.close();
 })().catch(e=>{console.error(e);dom.window.close();process.exitCode=1});

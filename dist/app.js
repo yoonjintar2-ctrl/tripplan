@@ -345,7 +345,7 @@ async function renderMap() {
   state.markers.forEach(marker=>{marker.map=null;});state.markers.clear();
   state.routes.forEach(route=>route.setMap(null));state.routes=[];
   const items=activeItems().filter(itemPosition), allItems=activeItems(true), allPeople=travelers();
-  window.CaptainMap?.setRoute(state.map,items,state.trip.id+":"+state.activeDate+":"+state.travelerFilter);
+  window.CaptainMap?.setRoute(state.map,items,state.trip.id+":"+state.activeDate+":"+state.travelerFilter,state.selectedId);
   items.forEach(item=>{const marker=new AdvancedMarkerElement({map:state.map,position:itemPosition(item),title:item.name,content:markerContent(item,item.id===state.selectedId),zIndex:item.id===state.selectedId?220:50,gmpClickable:true});marker.addEventListener('gmp-click',()=>selectStop(item.id,true));state.markers.set(item.id,marker);});
   const colors=['#292929','#707070','#a24a43','#596c70','#867c69','#8b6666'];
   const people=allPeople.filter(person=>state.travelerFilter==='all'||state.travelerFilter===person.id);
@@ -847,13 +847,15 @@ function renderTripList() {
   }
   list.innerHTML = state.trips.map(trip => {
     const role = trip._role === "owner" ? "소유자" : trip._role === "editor" ? "편집 가능" : "열람만";
-    return `<div class="trip-list-item ${trip.id === state.trip.id ? "is-active" : ""}"><button type="button" class="trip-list-main" data-trip-id="${safe(trip.id)}"><span><strong>${safe(trip.title)}</strong><small>${safe(trip.start_date)} — ${safe(trip.end_date)}</small></span><em>${role}</em></button><button type="button" class="trip-share-button" data-share-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 링크 공유 설정">🔗 링크</button></div>`;
+    return `<div class="trip-list-item ${trip.id === state.trip.id ? "is-active" : ""}"><button type="button" class="trip-list-main" data-trip-id="${safe(trip.id)}"><span><strong>${safe(trip.title)}</strong><small>${safe(trip.start_date)} — ${safe(trip.end_date)}</small></span><em>${role}</em></button><div class="trip-list-actions"><button type="button" data-load-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 불러오기">불러오기</button><button type="button" class="trip-share-button" data-share-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 링크 공유 설정">🔗 링크</button><button type="button" data-delete-trip="${safe(trip.id)}" aria-label="${safe(trip.title)} 삭제하기" ${trip.owner_id===state.session?.user.id?'':'disabled title="여행 소유자만 삭제할 수 있습니다"'}>삭제하기</button></div></div>`;
   }).join("");
   $$("[data-trip-id]", list).forEach(button => button.addEventListener("click", async () => {
     if (button.dataset.tripId !== state.trip.id) await switchTrip(button.dataset.tripId);
     renderTripList();
     resetTripForm(state.trips.find(trip => trip.id === button.dataset.tripId) || state.trip);
   }));
+  $$('[data-load-trip]',list).forEach(button=>button.addEventListener('click',async()=>{try{await switchTrip(button.dataset.loadTrip);renderTripList();resetTripForm(state.trip);$('#tripDialog').close();}catch(error){showToast(error.message||'여행을 불러오지 못했습니다.');}}));
+  $$('[data-delete-trip]',list).forEach(button=>button.addEventListener('click',()=>deleteTrip(button.dataset.deleteTrip)));
   $$("[data-share-trip]", list).forEach(button => button.addEventListener("click", async () => {
     try {
       if (button.dataset.shareTrip !== state.trip.id) await switchTrip(button.dataset.shareTrip);
@@ -947,23 +949,18 @@ async function saveTrip(event) {
   $("#tripDialog").close();
   showToast("빈 여행을 만들었습니다. 첫 일정을 추가해 보세요.");
 }
-async function deleteTrip() {
-  const tripId = $("#tripForm").elements.tripId.value;
-  if (!tripId || state.trip.id !== tripId || state.trip.owner_id !== state.session?.user.id) return;
-  if (!confirm(`‘${state.trip.title}’ 여행과 모든 일정을 삭제할까요?`)) return;
-  const { error } = await supabase.from("mt_trips").delete().eq("id", tripId);
-  if (error) return showToast(error.message);
-  localStorage.removeItem(`morrow-active-trip-${state.session.user.id}`);
-  await loadTripList();
-  const nextTrip = state.trips[0];
-  if (nextTrip) await switchTrip(nextTrip.id);
-  else {
-    setEmptyWorkspace();
-    setSync("새 여행을 만들어 주세요");
-    render();
-  }
-  $("#tripDialog").close();
-  showToast("여행을 삭제했습니다.");
+async function deleteTrip(targetId) {
+  const tripId=typeof targetId==='string'?targetId:$('#tripForm').elements.tripId.value;
+  const trip=state.trips.find(t=>t.id===tripId)||(state.trip.id===tripId?state.trip:null);
+  if(!trip||trip.owner_id!==state.session?.user.id)return;
+  if(!confirm(`‘${trip.title}’ 여행과 모든 일정을 삭제할까요?`))return;
+  try{
+    const {error}=await supabase.from('mt_trips').delete().eq('id',tripId).eq('owner_id',state.session.user.id);
+    if(error)throw error;
+    const wasCurrent=state.trip.id===tripId;await loadTripList();
+    if(wasCurrent){localStorage.removeItem(`morrow-active-trip-${state.session.user.id}`);if(state.trips[0])await switchTrip(state.trips[0].id);else{setEmptyWorkspace();setSync('새 여행을 만들어 주세요');render();}}
+    renderTripList();resetTripForm(state.trip.id?state.trip:null);showToast('여행을 삭제했습니다.');
+  }catch(error){showToast(error.message||'여행을 삭제하지 못했습니다.');}
 }
 async function updateMemberRole(userId, role) {
   const { error } = await supabase.from("mt_trip_members").update({ role }).eq("trip_id", state.trip.id).eq("user_id", userId);
@@ -1268,7 +1265,7 @@ async function handleEditorMapClick(event) {
 let mainMapPickRequest = 0;
 function positionMapPick() {
   const card=$('#mapPickCard');if(card.hidden)return;
-  const panel=$('.map-panel'),bounds=panel.getBoundingClientRect();
+  const panel=$('.map-viewport'),bounds=panel.getBoundingClientRect();
   let point=state.mapPickPixel;
   if(state.mapPickPosition&&state.mapPickOverlay?.getProjection()) {
     const projected=state.mapPickOverlay.getProjection().fromLatLngToContainerPixel(state.mapPickPosition);
@@ -1285,7 +1282,7 @@ function positionMapPick() {
 }
 function anchorMapPick(event) {
   state.mapPickPosition=event.latLng||null;
-  const bounds=$('.map-panel').getBoundingClientRect(),dom=event.domEvent;
+  const bounds=$('.map-viewport').getBoundingClientRect(),dom=event.domEvent;
   state.mapPickPixel=dom&&Number.isFinite(dom.clientX)?{x:dom.clientX-bounds.left,y:dom.clientY-bounds.top}:null;
   if(!state.mapPickOverlay&&google.maps.OverlayView) {
     class PickProjection extends google.maps.OverlayView {
