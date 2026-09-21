@@ -539,6 +539,7 @@ function render() {
   if (!dates.includes(state.activeDate)) state.activeDate = dates[0];
   const items = activeItems();
   if (state.selectedId && !items.some(item => item.id === state.selectedId)) state.selectedId = null;
+  if(state.mobileExpandedId!==state.selectedId)state.mobileExpandedId=null;
   const selected = selectedItem();
 
   document.title = state.trip.id ? `${state.trip.title} — 여행계획닷컴 beta` : "여행계획닷컴 beta";
@@ -556,7 +557,7 @@ function render() {
   $("#totalCost").textContent = won(state.items.reduce((sum, item) => sum + (item.settlement_enabled ? Number(item.cost_won || 0) : 0), 0));
   $("#agendaList").innerHTML = items.length ? items.map(item => {
     const current = isCurrentItem(item, items);
-    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p></span>${agendaFaces(item)}</button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button>${item.id===state.selectedId && item.id===state.mobileExpandedId?`<div class="mobile-agenda-details"><strong>${safe(item.name)}</strong><span>${safe(item.item_date)} · ${safe(formatTime(item.start_time))}${item.end_time?' — '+safe(formatTime(item.end_time)):''}</span>${item.category?`<span>${safe(item.category)}</span>`:''}${item.memo?`<p>${safe(item.memo)}</p>`:''}${item.settlement_enabled?`<span>${won(item.cost_won || 0)}</span>`:''}</div>`:''}</div>`;
+    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p></span>${agendaFaces(item)}</button><button class="agenda-expand" type="button" data-expand-item="${safe(item.id)}" aria-label="${safe(item.name)} 세부 내용 ${state.mobileExpandedId===item.id?'접기':'펼치기'}" aria-expanded="${state.mobileExpandedId===item.id}">${state.mobileExpandedId===item.id?'▴':'▾'}</button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button>${item.id===state.selectedId && item.id===state.mobileExpandedId?`<div class="mobile-agenda-details"><strong>${safe(item.name)}</strong><span>${safe(item.item_date)} · ${safe(formatTime(item.start_time))}${item.end_time?' — '+safe(formatTime(item.end_time)):''}</span>${item.category?`<span>${safe(item.category)}</span>`:''}${item.memo?`<p>${safe(item.memo)}</p>`:''}${item.settlement_enabled?`<span>${won(item.cost_won || 0)}</span>`:''}</div>`:''}</div>`;
   }).join("") : `<div class="agenda-empty captain-empty"><img src="./assets/captain/guide-map.webp" width="98" height="120" alt="지도를 함께 보는 캡틴비어"><strong>아직 비어 있는 여행 지도</strong><p>가고 싶은 곳 하나로 시작해요.<br>제가 옆에서 함께할게요.</p></div>`;
   $$("[data-item-id]").forEach(button => {
     button.addEventListener("click", () => selectStop(button.dataset.itemId, true));
@@ -564,6 +565,10 @@ function render() {
   $$("[data-edit-item]").forEach(button => button.addEventListener("click", () => {
     const item = state.items.find(value => value.id === button.dataset.editItem);
     openSchedule(item);
+  }));
+  $$('[data-expand-item]').forEach(button=>button.addEventListener('click',()=>{
+    const id=button.dataset.expandItem,wasOpen=state.mobileExpandedId===id;
+    state.selectedId=id;state.mobileExpandedId=wasOpen?null:id;render();
   }));
   renderTripClock(items);
   updatePlaceCard(state.mapSearchItem || selected);
@@ -778,7 +783,7 @@ async function panMapToItem(item, animate = true) {
 }
 function selectStop(id, animate = false) {
   clearMapSearchPlace();
-  state.mobileExpandedId=id;
+  if(state.selectedId!==id)state.mobileExpandedId=null;
   state.selectedId = id;
   render();
   const item = selectedItem();
@@ -1294,7 +1299,7 @@ function resetTripForm(trip = null) {
   form.elements.startDate.value = trip?.start_date || todayString();
   form.elements.endDate.value = trip?.end_date || todayString();
   [form.elements.title, form.elements.startDate, form.elements.endDate].forEach(input => { input.disabled = !editable; });
-  $("#tripFormTitle").textContent = isExisting ? "여행 정보" : "새 여행 만들기";
+  $("#tripFormTitle").textContent = isExisting ? "지금 선택한 여행의 정보" : "새 여행 만들기";
   $("#tripFormRole").textContent = !isExisting ? "일정 없이 시작합니다" : role === "owner" ? "제목과 기간을 수정할 수 있습니다" : role === "editor" ? "이 여행을 함께 편집 중입니다" : "이 여행을 열람할 수 있습니다";
   $("#saveTripButton").hidden = !editable;
   $("#deleteTripButton").hidden = !isExisting || role !== "owner";
@@ -1966,3 +1971,13 @@ Promise.allSettled([initMap(), initializeAuth()]);
 setTimeout(scrollToCurrentScheduleOnMobile, 500);
 setInterval(updateAutoSaveStatus, 60000);
 setInterval(tickTripClock, 15000);
+
+// Use the actual visible height as Safari bars and the keyboard change size.
+function syncVisibleViewport(){
+  const viewport=window.visualViewport;
+  if(viewport && viewport.scale!==1)return;
+  document.documentElement.style.setProperty('--visible-height',`${viewport?.height || window.innerHeight}px`);
+}
+window.visualViewport?.addEventListener('resize',syncVisibleViewport);
+window.addEventListener('resize',syncVisibleViewport);
+syncVisibleViewport();

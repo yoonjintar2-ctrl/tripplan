@@ -24,7 +24,8 @@ const run=s=>vm.runInContext(s,c),el=s=>w.document.querySelector(s),tick=()=>new
 (async()=>{
 run(`initializeGuest();state.trip.start_date='2099-10-01';state.trip.end_date='2099-10-03';state.items=[{id:'a',name:'첫 일정',item_date:'2099-10-01'},{id:'b',name:'두 번째 일정',item_date:'2099-10-02',memo:'눌렀을 때 보이는 내용'}];commitGuest();state.activeDate='2099-10-02';render();`);
 assert.equal(el('.mobile-agenda-details'),null);
-el('[data-item-id=b]').click();assert.match(el('.mobile-agenda-details').textContent,/눌렀을 때/);
+el('[data-item-id=b]').click();assert.equal(el('.mobile-agenda-details'),null);el('[data-expand-item=b]').click();assert.match(el('.mobile-agenda-details').textContent,/눌렀을 때/);
+el('[data-expand-item=b]').click();assert.equal(el('.mobile-agenda-details'),null);el('[data-expand-item=b]').click();
 const id=run('state.trip.id');
 run('state.selectedId=null;state.activeDate=state.trip.start_date;state.guestBook=null;initializeGuest()');
 assert.equal(run('state.trip.id'),id);assert.equal(run('state.selectedId'),'b');assert.equal(run('state.activeDate'),'2099-10-02');
@@ -41,5 +42,7 @@ run(`state.session={user:{id:'account-b'}}`);assert.equal(run('readView().tripId
 const backend=run('supabase');let handler;backend.auth.getSession=async()=>({data:{session:{user:{id:'account-a'}}},error:null});backend.auth.onAuthStateChange=fn=>handler=fn;
 run('globalThis.loads=0;restoreWorkspace=async()=>{loads++;state.loadedUserId=state.session.user.id;}');
 await run('initializeAuth()');assert.equal(run('loads'),1);w.setTimeout=fn=>fn();handler('SIGNED_IN',{user:{id:'account-a'}});await tick();assert.equal(run('loads'),1,'same-account focus sign-in must not reset workspace');
+Object.defineProperty(w,'visualViewport',{value:{height:640,scale:1},configurable:true});run('syncVisibleViewport()');assert.equal(w.document.documentElement.style.getPropertyValue('--visible-height'),'640px');w.visualViewport.height=480;run('syncVisibleViewport()');assert.equal(w.document.documentElement.style.getPropertyValue('--visible-height'),'480px');
+run("state.mobileExpandedId='b';state.selectedId=null;render()");assert.equal(run('state.mobileExpandedId'),null);assert.equal(el('.mobile-agenda-details'),null);
 console.log('PASS: guest trip/day/item reload and switches; account-scoped view restore; repeated sign-in focus; mobile detail/menu actions; out-of-trip date blocked before saving');
 })().catch(error=>{console.error(error);process.exitCode=1});
