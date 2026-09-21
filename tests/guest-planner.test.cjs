@@ -10,10 +10,10 @@ w.HTMLElement.prototype.scrollIntoView=function(){};
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'))};
 const calls={pan:0,markers:[],writes:[],rpc:[],query:[]};
 class LatLng {constructor(lat,lng){this.a=lat;this.b=lng}lat(){return this.a}lng(){return this.b}}
-class FakeMap {constructor(el,opts){this.center=opts.center?.lat instanceof Function?opts.center:new LatLng(opts.center.lat,opts.center.lng);this.zoom=opts.zoom;this.listeners={}}addListener(n,f){this.listeners[n]=f}getCenter(){return this.center}getZoom(){return this.zoom}setZoom(v){this.zoom=v}setCenter(v){this.center=typeof v.lat==='function'?v:new LatLng(v.lat,v.lng)}panTo(v){calls.pan++;this.setCenter(v)}fitBounds(){}}
+class FakeMap {constructor(el,opts){this.center=opts.center?.lat instanceof Function?opts.center:new LatLng(opts.center.lat,opts.center.lng);this.zoom=opts.zoom;this.listeners={};this.mapTypes=new Map()}setMapTypeId(id){this.mapTypeId=id}addListener(n,f){this.listeners[n]=f}getCenter(){return this.center}getZoom(){return this.zoom}setZoom(v){this.zoom=v}setCenter(v){this.center=typeof v.lat==='function'?v:new LatLng(v.lat,v.lng)}panTo(v){calls.pan++;this.setCenter(v)}fitBounds(){}}
 class Marker{constructor(opts){Object.assign(this,opts);this.listeners={};calls.markers.push(this)}addEventListener(n,f){this.listeners[n]=f}}
 class Place{constructor({id}){this.id=id}async fetchFields(){Object.assign(this,{displayName:'선택한 카페',formattedAddress:'London UK',location:new LatLng(51.5,-.12),googleMapsURI:'https://www.google.com/maps/?q=London',photos:[],reviews:[]})}static async searchByText(){return {places:[]}}}
-w.google={maps:{importLibrary:async name=>({Map:FakeMap,AdvancedMarkerElement:Marker,Place,Geocoder:class{async geocode(){return {results:[{formatted_address:'정확한 좌표 주소'}]}}}}),LatLngBounds:class{extend(){}},Polyline:class{setMap(){}},event:{trigger(){}}}};
+w.google={maps:{StyledMapType:class{constructor(styles,opts){this.styles=styles;this.opts=opts}},importLibrary:async name=>({Map:FakeMap,AdvancedMarkerElement:Marker,Place,Geocoder:class{async geocode(){return {results:[{formatted_address:'정확한 좌표 주소'}]}}}}),LatLngBounds:class{extend(){}},Polyline:class{setMap(){}},event:{trigger(){}}}};
 w.createClient=()=>({from(table){const obj={select(){return this},single(){return this},eq(){return this},order(){return this},in(){return this},insert(row){calls.writes.push({table,row});return this},update(row){calls.writes.push({table,row});return this},then(resolve){return Promise.resolve({data:{id:'saved'},error:null}).then(resolve)}};return obj},rpc:async(name,args)=>{calls.rpc.push({name,args});return {data:null,error:null}},auth:{},functions:{}});
 let utils=fs.readFileSync(root+'/dist/travel-utils.js','utf8').replace(/export /g,'');
 let code=fs.readFileSync(root+'/dist/app.js','utf8').replace(/^import .*;\n/gm,'').replace('Promise.allSettled([initMap(), initializeAuth()]);','');
@@ -23,7 +23,26 @@ assert.equal(w.GuestDrafts,undefined);
 vm.runInContext(utils+'\n'+clock+'\n'+code,c);
 const run=s=>vm.runInContext(s,c),el=s=>w.document.querySelector(s),tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{
-assert.equal(el('#manageTripsButton').textContent,'내 계획 시작하기');
+// Begin at the actual Add schedule button before Auth initialization finishes.
+Object.defineProperty(w.crypto,'randomUUID',{value:undefined,configurable:true});
+let finishSession;
+const startupBackend=run('supabase');
+startupBackend.auth.getSession=()=>new Promise(resolve=>{finishSession=resolve});
+startupBackend.auth.onAuthStateChange=()=>{};
+const startup=run('initializeAuth()');
+el('#addScheduleButton').click();
+assert(el('#scheduleDialog').open,'first Add schedule opens the editor, not Google login');
+assert(!el('#accountDialog').open);
+assert.match(run('state.trip.id'),/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+el('#scheduleName').value='첫 화면에서 작성 중';
+el('#scheduleName').dispatchEvent(new w.Event('input',{bubbles:true}));
+const startupId=run('state.trip.id');
+finishSession({data:{session:null},error:null});await startup;
+assert.equal(run('state.trip.id'),startupId);
+assert.equal(el('#scheduleName').value,'첫 화면에서 작성 중','late auth must not reset guest form');
+el('#scheduleDialog').close();
+console.log('PASS: direct first-click creation, delayed Auth, missing randomUUID and unfinished form preservation');
+assert.equal(el('#manageTripsButton').textContent,'여행 관리');
 el('#manageTripsButton').click();
 assert(el('#tripDialog').open,'actual start menu opens without a global GuestDrafts script');
 assert.equal(run('guestWritable()'),true);
@@ -37,6 +56,18 @@ assert.equal(JSON.parse(w.localStorage.getItem(run('GuestDrafts.KEY'))).editor.f
 run('state.guestBook=null;initializeGuest()');assert.equal(el('#scheduleName').value,'비로그인 카페','reload restores unfinished form');
 await run('saveSchedule({preventDefault(){},currentTarget:document.querySelector("#scheduleForm")})');assert.equal(run('state.items[0].name'),'비로그인 카페');assert.equal(calls.writes.length,0,'guest never writes anonymous database rows');
 run('state.items=[];state.guestBook=null;initializeGuest()');assert.equal(run('state.items[0].name'),'비로그인 카페');
+run('openSchedule(state.items[0])');
+el('#scheduleName').value='수정한 게스트 일정';el('#savedMemo').value='메모도 보존';
+el('#settlementEnabled').checked=true;el('#settlementEnabled').dispatchEvent(new w.Event('change',{bubbles:true}));el('#scheduleForm [name="cost"]').value='12000';
+await run('saveSchedule({preventDefault(){},currentTarget:document.querySelector("#scheduleForm")})');
+assert.equal(run('state.items.length'),1);assert.equal(run('state.items[0].memo'),'메모도 보존');assert.equal(run('state.items[0].cost_won'),12000);
+run('openSchedule(state.items[0])');el('#scheduleName').value='비로그인 카페';
+await run('saveSchedule({preventDefault(){},currentTarget:document.querySelector("#scheduleForm")})');
+run('state.mapPickedPlace={displayName:"지도 선택 테스트",formattedAddress:"예시",location:{lat:()=>35,lng:()=>135},googleMapsURI:"https://maps.google.com/?q=35,135"}');
+el('#addMapPlace').click();await tick();
+assert(el('#scheduleDialog').open,'map add opens guest editor');assert(!el('#accountDialog').open);
+el('#scheduleDialog').close();
+console.log('PASS: guest edit, memo, settlement and map-selected place editor');
 // Sample preview never replaces a guest draft or writes demo rows to the server.
 const guestId=run('state.trip.id'), beforeSample=w.localStorage.getItem(run('GuestDrafts.KEY'));
 assert([...el('#tripSelect').options].some(option=>option.value==='sample-seoul-day'));

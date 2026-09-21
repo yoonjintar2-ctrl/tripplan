@@ -10,10 +10,10 @@ w.HTMLElement.prototype.scrollIntoView=function(){};
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'))};
 const calls={pan:0,markers:[],writes:[],rpc:[],query:[]};
 class LatLng {constructor(lat,lng){this.a=lat;this.b=lng}lat(){return this.a}lng(){return this.b}}
-class FakeMap {constructor(el,opts){this.center=opts.center?.lat instanceof Function?opts.center:new LatLng(opts.center.lat,opts.center.lng);this.zoom=opts.zoom;this.listeners={}}addListener(n,f){this.listeners[n]=f}getCenter(){return this.center}getZoom(){return this.zoom}setZoom(v){this.zoom=v}setCenter(v){this.center=typeof v.lat==='function'?v:new LatLng(v.lat,v.lng)}panTo(v){calls.pan++;this.setCenter(v)}fitBounds(){}}
+class FakeMap {constructor(el,opts){this.center=opts.center?.lat instanceof Function?opts.center:new LatLng(opts.center.lat,opts.center.lng);this.zoom=opts.zoom;this.listeners={};this.mapTypes=new Map()}setMapTypeId(id){this.mapTypeId=id}addListener(n,f){this.listeners[n]=f}getCenter(){return this.center}getZoom(){return this.zoom}setZoom(v){this.zoom=v}setCenter(v){this.center=typeof v.lat==='function'?v:new LatLng(v.lat,v.lng)}panTo(v){calls.pan++;this.setCenter(v)}fitBounds(){}}
 class Marker{constructor(opts){Object.assign(this,opts);this.listeners={};calls.markers.push(this)}addEventListener(n,f){this.listeners[n]=f}}
 class Place{constructor({id}){this.id=id}async fetchFields(){Object.assign(this,{displayName:'선택한 카페',formattedAddress:'London UK',location:new LatLng(51.5,-.12),googleMapsURI:'https://www.google.com/maps/?q=London',photos:[],reviews:[]})}static async searchByText(){return {places:[]}}}
-w.google={maps:{importLibrary:async name=>({Map:FakeMap,AdvancedMarkerElement:Marker,Place,Geocoder:class{async geocode(){return {results:[{formatted_address:'정확한 좌표 주소'}]}}}}),LatLngBounds:class{extend(){}},Polyline:class{setMap(){}},event:{trigger(){}}}};
+w.google={maps:{StyledMapType:class{constructor(styles,opts){this.styles=styles;this.opts=opts}},importLibrary:async name=>({Map:FakeMap,AdvancedMarkerElement:Marker,Place,Geocoder:class{async geocode(){return {results:[{formatted_address:'정확한 좌표 주소'}]}}}}),LatLngBounds:class{extend(){}},Polyline:class{setMap(){}},event:{trigger(){}}}};
 w.createClient=()=>({from(table){const obj={select(){return this},single(){return this},eq(){return this},order(){return this},in(){return this},insert(row){calls.writes.push({table,row});return this},update(row){calls.writes.push({table,row});return this},then(resolve){return Promise.resolve({data:{id:'saved'},error:null}).then(resolve)}};return obj},rpc:async(name,args)=>{calls.rpc.push({name,args});return {data:null,error:null}},auth:{},functions:{}});
 let utils=fs.readFileSync(root+'/dist/travel-utils.js','utf8').replace(/export /g,'');
 let code=fs.readFileSync(root+'/dist/app.js','utf8').replace(/^import .*;\n/gm,'').replace('Promise.allSettled([initMap(), initializeAuth()]);','');
@@ -23,7 +23,7 @@ vm.runInContext(utils+'\n'+clock+'\n'+code,c);
 const run=s=>vm.runInContext(s,c),el=s=>w.document.querySelector(s),tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{
 run(`state.session={user:{id:'owner',user_metadata:{full_name:'나'}}};state.trip={id:'trip',owner_id:'owner',title:'영국',destination:'London',start_date:'2026-10-12',end_date:'2026-10-16',categories:['관광'],travelers:[{id:'owner',nickname:'나',avatar:'male-001'}]};state.trips=[state.trip];state.activeDate='2026-10-12';state.items=[{id:'one',trip_id:'trip',item_date:'2026-10-12',start_time:'09:00',name:'장소 A',latitude:51.5,longitude:-.1,icon:'OLD',split_ratios:{}},{id:'two',trip_id:'trip',item_date:'2026-10-12',start_time:'11:00',name:'장소 B',latitude:51.51,longitude:-.12,split_ratios:{}}];`);
-await run('initMap()');await tick();
+await run('initMap()');await tick();assert.equal(run('state.map.mapTypeId'),'white_minimal');assert.equal(run("state.map.mapTypes.get('white_minimal').styles.find(s=>s.featureType==='water' && s.elementType==='geometry').stylers[0].color"),'#dfe9ee');
 run('render()');await tick();
 assert.equal(el('#iconDialog'),null);assert.equal(el('#openIconPicker'),null);assert.equal(el('input[type="time"]'),null);assert.equal(el('[name="destination"]'),null);assert(!el('#agendaList').textContent.includes('OLD'));
 const ids=[...w.document.querySelectorAll('[id]')].map(node=>node.id);assert.equal(new Set(ids).size,ids.length,'DOM IDs must be unique');
@@ -36,7 +36,7 @@ el('#hourOptions [data-time-value="14"]').click();el('#minuteOptions [data-time-
 run('toggleEndTime(true);setTimeFields("end","15:10");toggleEndTime(false)');assert.equal(el('#endTime').value,'');
 console.log('PASS: full-field time picker selects hours/minutes and clears disabled end time.');
 run(`state.testPlaces=[{id:'a',displayName:'Cafe A',formattedAddress:'Address A',location:{lat:()=>51.5,lng:()=>-.1},googleMapsURI:'https://www.google.com/maps/?q=A'},{id:'b',displayName:'Cafe B',formattedAddress:'Address B',location:{lat:()=>51.6,lng:()=>-.2},googleMapsURI:'https://www.google.com/maps/?q=B'}];showPlaceResults(state.testPlaces);`);
-await run('renderEditorMap(null,state.testPlaces)');assert.equal(run('state.editorResultMarkers.length'),2);
+await run('renderEditorMap(null,state.testPlaces)');assert.equal(run('state.editorMap.mapTypeId'),'white_minimal');assert.equal(run('state.editorResultMarkers.length'),2);
 run('state.editorResultMarkers[1].listeners["gmp-click"]()');await tick();assert.equal(run('state.pendingPlace.placeId'),'b');assert.equal(el('#mapsUrlInput').value,'https://www.google.com/maps/?q=B');assert.equal(el('#scheduleName').value,'Cafe B');
 await run('handleEditorMapClick({latLng:{lat:()=>51.7,lng:()=>-.3},stop(){}})');assert.equal(run('state.pendingPlace.latitude'),51.7);assert.equal(run('state.pendingPlace.placeId'),null);
 run('clearPlaceSelection()');await tick();assert.equal(run('state.pendingPlace'),null);assert.equal(el('#mapsUrlInput').value,'');

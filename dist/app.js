@@ -81,6 +81,17 @@ const won = value => `₩${Math.round(Number(value || 0)).toLocaleString("ko-KR"
 const safe = value => String(value ?? "").replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
+// IDs must also work on browsers without crypto.randomUUID (for example HTTP).
+// This is only an ID generator; it does not weaken OAuth/PKCE requirements.
+function newLocalId() {
+  if(typeof crypto.randomUUID==='function')return crypto.randomUUID();
+  const bytes=crypto.getRandomValues(new Uint8Array(16));
+  bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+function hasSharedTripLink(){const params=new URLSearchParams(location.search);return Boolean(params.get('trip') && params.get('invite'));}
+
 function todayString() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -161,12 +172,14 @@ function initializeGuest(){
     if(state.guestBook.pending && !state.guestBook.pending.userId)state.guestBook.pending=null;
     state.guestMode=true;
     if(!state.guestBook.records.length){
-      const trip={...blankTrip(),id:crypto.randomUUID(),title:'나의 여행 계획',travelers:[{id:crypto.randomUUID(),nickname:'나',avatar:'male-001'}]};
+      const trip={...blankTrip(),id:newLocalId(),title:'나의 여행 계획',travelers:[{id:newLocalId(),nickname:'나',avatar:'male-001'}]};
       state.guestBook.records.push({trip,items:[]});state.guestBook.activeId=trip.id;
     }
-    loadGuestRecord(state.guestBook.activeId || state.guestBook.records[0].trip.id);
+    const active=state.guestBook.records.find(record=>record.trip.id===state.guestBook.activeId) || state.guestBook.records[0];
+    loadGuestRecord(active.trip.id);
     setSync(guestHasWork()?'이 브라우저에 임시 보관 중':'로그인 없이 계획을 시작해 보세요');restoreGuestEditor();refreshGuestNotice();
   }catch(error){state.guestStorageError=error.message;showToast(error.message);setSync('임시 계획을 읽지 못했습니다');}
+  return isGuestTrip();
 }
 function captureGuestEditor(){
   if(!state.guestBook || state.guestImporting || state.guestRestoring || (!state.guestMode && !state.guestRecovery))return;
@@ -531,6 +544,32 @@ async function loadGoogleMaps() {
   });
   return googleMapsLoad;
 }
+// A separate Google StyledMapType keeps the base map palette independent of
+// the AdvancedMarker map ID. Do not pass MapOptions.styles with a map ID.
+const WHITE_MINIMAL_STYLE = [
+  {elementType:'geometry',stylers:[{color:'#f7f8f8'}]},
+  {elementType:'labels.text.fill',stylers:[{color:'#626970'}]},
+  {elementType:'labels.text.stroke',stylers:[{color:'#ffffff'}]},
+  {featureType:'landscape.man_made',elementType:'geometry',stylers:[{color:'#eeeeef'}]},
+  {featureType:'landscape.natural',elementType:'geometry',stylers:[{color:'#fafafa'}]},
+  {featureType:'administrative.land_parcel',elementType:'labels',stylers:[{visibility:'off'}]},
+  {featureType:'poi',elementType:'labels',stylers:[{visibility:'off'}]},
+  {featureType:'poi.park',elementType:'geometry',stylers:[{color:'#e9eeeb'}]},
+  {featureType:'poi.park',elementType:'labels.text',stylers:[{visibility:'on'},{color:'#78877e'}]},
+  {featureType:'poi.attraction',elementType:'labels.text',stylers:[{visibility:'on'}]},
+  {featureType:'road',elementType:'geometry.fill',stylers:[{color:'#ffffff'}]},
+  {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#e2e5e7'}]},
+  {featureType:'road.highway',elementType:'geometry.fill',stylers:[{color:'#f4f5f6'}]},
+  {featureType:'road',elementType:'labels.icon',stylers:[{visibility:'off'}]},
+  {featureType:'transit.line',elementType:'geometry',stylers:[{color:'#d7dcdf'}]},
+  {featureType:'transit.station',elementType:'labels',stylers:[{visibility:'on'}]},
+  {featureType:'water',elementType:'geometry',stylers:[{color:'#dfe9ee'}]},
+  {featureType:'water',elementType:'labels.text.fill',stylers:[{color:'#859da9'}]}
+];
+function applyWhiteMinimalMap(map){
+  map.mapTypes.set('white_minimal',new google.maps.StyledMapType(WHITE_MINIMAL_STYLE,{name:'화이트미니멀'}));
+  map.setMapTypeId('white_minimal');
+}
 async function initMap() {
   try {
     await loadGoogleMaps();
@@ -540,6 +579,7 @@ async function initMap() {
       mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
       gestureHandling: "greedy", clickableIcons: true
     });
+    applyWhiteMinimalMap(state.map);
     state.map.addListener("click", event => handleMainMapClick(event));
     state.mapReady = true;
     renderMap();
@@ -703,6 +743,10 @@ function resetScheduleForm(item = null) {
 }
 function openSchedule(item = null) {
   if(state.sampleReturn)return showToast("샘플은 둘러보기용입니다. 여행 목록에서 내 계획을 선택해 주세요.");
+  // Ordinary visitors can start directly from Add schedule, even while Auth is loading.
+  if(!state.session && !isGuestTrip() && !hasSharedTripLink() && !state.trip.owner_id){
+    if(!initializeGuest())return;
+  }
   if (!state.session && !isGuestTrip()) {
     $("#accountDialog").showModal();
     showToast("공유받은 여행은 로그인 후 수정할 수 있습니다.");
@@ -847,7 +891,7 @@ async function saveSchedule(event) {
   if (!row.name) {errorNode.textContent="일정 이름을 입력해 주세요.";return;}
   const itemId = String(data.get("itemId") || "");
   if(isGuestTrip()){
-    const saved={...row,id:itemId||crypto.randomUUID(),sort_order:state.items.find(item=>item.id===itemId)?.sort_order||Date.now()};
+    const saved={...row,id:itemId||newLocalId(),sort_order:state.items.find(item=>item.id===itemId)?.sort_order||Date.now()};
     state.items=itemId?state.items.map(item=>item.id===itemId?saved:item):[...state.items,saved];
     state.activeDate=row.item_date;state.selectedId=saved.id;commitGuest();$('#scheduleDialog').close();render();return;
   }
@@ -1114,12 +1158,12 @@ function resetTripForm(trip = null) {
   $("#saveTripButton").hidden = !editable;
   $("#deleteTripButton").hidden = !isExisting || role !== "owner";
   $("#tripFormError").textContent = "";
-  state.draftTravelers = isExisting ? travelersFor(trip,state.members).map(person=>({...person})) : [{id:state.session?.user.id || crypto.randomUUID(),nickname:state.session?.user.user_metadata?.full_name || "나",avatar:"male-001"}];
+  state.draftTravelers = isExisting ? travelersFor(trip,state.members).map(person=>({...person})) : [{id:state.session?.user.id || newLocalId(),nickname:state.session?.user.user_metadata?.full_name || "나",avatar:"male-001"}];
   state.rosterEditable=editable; renderDraftTravelers();
 }
 function openTripManager(createNew = false) {
   leaveSampleTrip();
-  if (!state.session && !state.guestMode) { clearShareParameters(); initializeGuest(); }
+  if (!state.session && !isGuestTrip()) { clearShareParameters(); if(!initializeGuest())return; }
   if(state.guestMode && !guestWritable())return showToast("임시 계획을 계정에 저장한 뒤 편집해 주세요.");
   renderTripList();
   resetTripForm(createNew || !state.trip.id ? null : state.trips.find(trip => trip.id === state.trip.id) || state.trip);
@@ -1154,7 +1198,7 @@ async function saveTrip(event) {
       }
       record.trip={...old,title,start_date:startDate,end_date:endDate,travelers:roster};
     }else{
-      record={trip:{...blankTrip(),id:crypto.randomUUID(),title,start_date:startDate,end_date:endDate,travelers:roster},items:[]};state.guestBook.records.push(record);
+      record={trip:{...blankTrip(),id:newLocalId(),title,start_date:startDate,end_date:endDate,travelers:roster},items:[]};state.guestBook.records.push(record);
     }
     loadGuestRecord(record.trip.id);commitGuest();$('#tripDialog').close();render();return;
   }
@@ -1251,6 +1295,9 @@ async function signInWithGoogle() {
       if(!writeGuestBook())throw new Error('로그인 이동 전에 임시 저장하지 못했습니다. '+state.guestStorageError);
     }
     if(state.session){await restoreWorkspace();return;}
+    if(location.protocol!=='https:' && !['localhost','127.0.0.1'].includes(location.hostname)){
+      throw new Error('Google 로그인은 HTTPS 주소에서 시작해 주세요. 현재 계획은 이 주소의 브라우저에 보관 중입니다.');
+    }
     const {data,error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:authRedirectUrl(location.href),skipBrowserRedirect:true}});
     if(error)throw error;if(!data?.url)throw new Error('로그인 주소를 받지 못했습니다. 다시 시도해 주세요.');
     // A second verified synchronous write immediately before leaving for Google.
@@ -1329,7 +1376,10 @@ async function initializeAuth() {
   const callbackURL=new URL(location.href);
   const fragment=new URLSearchParams(callbackURL.hash.slice(1));
   const hadCallback=callbackURL.searchParams.has('code') || callbackURL.searchParams.has('error') || fragment.has('error');
-  const { data, error } = await supabase.auth.getSession();
+  let data, error;
+  try{({data,error}=await supabase.auth.getSession());}
+  catch(failure){error=failure;}
+
   if (error) setSync("로그인 상태를 확인하지 못했습니다");
   state.session = data?.session || null;
   updateAccountUI();
@@ -1338,7 +1388,7 @@ async function initializeAuth() {
   } else {
     try {
       const shared = await loadPublicSharedTrip();
-      if (!shared) {
+      if (!shared && !isGuestTrip() && !state.sampleReturn) {
         initializeGuest();
       }
     } catch (shareError) {
@@ -1481,6 +1531,7 @@ async function renderEditorMap(place = null, results = []) {
         zoom: 14, mapId: 'DEMO_MAP_ID', mapTypeControl: false, streetViewControl: false,
         fullscreenControl: false, gestureHandling: 'cooperative', clickableIcons: true
       });
+      applyWhiteMinimalMap(state.editorMap);
       state.editorMap.addListener('click', event => handleEditorMapClick(event));
     }
     google.maps.event.trigger(state.editorMap, 'resize');
@@ -1674,7 +1725,7 @@ $("#openCategoryManager").addEventListener("click",()=>{closeCategoryMenu();$("#
 $("#openAttendees").addEventListener("click",openAttendees);
 $("#attendEveryone").addEventListener("change",event=>{if(event.target.checked)$$("input",$("#attendeeOptions")).forEach(input=>{input.checked=true;});});
 $("#saveAttendees").addEventListener("click",()=>{const selected=$$("input:checked",$("#attendeeOptions")).map(input=>input.value);if(!selected.length){$("#attendeeError").textContent="한 명 이상 선택해 주세요.";return;}state.participantIds=$("#attendEveryone").checked?null:selected;renderAttendeeSummary();renderRatioFields();toggleSettlement($("#settlementEnabled").checked);$("#attendeeDialog").close();});
-$("#addTraveler").addEventListener("click",()=>{if(state.draftTravelers.length>=100)return showToast("최대 100명까지 추가할 수 있습니다.");state.draftTravelers.push({id:crypto.randomUUID(),nickname:"",avatar:`female-${String(state.draftTravelers.length%200+1).padStart(3,'0')}`});renderDraftTravelers();$$("[data-nickname]").at(-1)?.focus();});
+$("#addTraveler").addEventListener("click",()=>{if(state.draftTravelers.length>=100)return showToast("최대 100명까지 추가할 수 있습니다.");state.draftTravelers.push({id:newLocalId(),nickname:"",avatar:`female-${String(state.draftTravelers.length%200+1).padStart(3,'0')}`});renderDraftTravelers();$$("[data-nickname]").at(-1)?.focus();});
 $$('[data-avatar-group]').forEach(button=>button.addEventListener('click',()=>{state.avatarGroup=button.dataset.avatarGroup;state.avatarPage=0;renderAvatarGrid();}));
 $("#avatarPrevious").addEventListener("click",()=>{state.avatarPage=Math.max(0,state.avatarPage-1);renderAvatarGrid();});
 $("#avatarNext").addEventListener("click",()=>{state.avatarPage=Math.min(8,state.avatarPage+1);renderAvatarGrid();});
