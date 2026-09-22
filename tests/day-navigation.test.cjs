@@ -33,5 +33,12 @@ run("selectStop('a')");await run('navigateStop(-1)');assert.equal(run('state.act
 run("selectDay('2099-10-02');selectStop('c')");await run('navigateStop(1)');assert.equal(run('state.activeDate'),'2099-10-03');assert.equal(run('state.selectedId'),null);assert(el('#nextStop').disabled);await run('navigateStop(-1)');assert.equal(run('state.selectedId'),'c');
 assert(el('#routeCounter').hidden);assert.match(el('#nextStop').textContent,/다음 일정/);
 run("state.mapSearchItem={id:'search',name:'검색 장소',maps_url:'https://www.google.com/maps/?q=x'};updatePlaceCard(state.mapSearchItem)");assert.equal(el('#placeMore').parentElement.id,'mapSearchPlaceActions');run("updatePlaceCard(state.items[0])");assert.equal(el('#placeMore').parentElement.id,'placeCardDetails');
+// A schedule without place_id must reuse the preview's resolved Place, not coordinates.
+const resolved={displayName:'빅벤',photos:[{getURI:()=> 'https://example.com/bigben.jpg'}],reviews:[{text:'좋아요'}]};
+w.resolvedPlace=resolved;
+run("state.placeCache.set('a',resolvedPlace);state.items[0].maps_url='https://www.google.com/maps/?q=BigBen';updatePlaceCard(state.items[0])");
+let opened;w.PlaceInfo={open:async load=>{opened=await load()}};
+el('#placeMore').click();await tick();assert.equal(opened,resolved);assert.equal(opened.photos.length,1);assert.equal(opened.reviews[0].text,'좋아요');
+assert(el('#dayTransition img'),'transition retains Captain');
 console.log('PASS: cross-day forward/back, trip boundaries, empty day, day-only fit bounds, split navigation and search details placement');
 })().catch(e=>{console.error(e);process.exitCode=1});

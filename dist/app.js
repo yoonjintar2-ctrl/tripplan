@@ -1904,7 +1904,7 @@ async function handleMainMapClick(event) {
 $('#dismissMapPick').addEventListener('click', dismissMapPick);
 $('#placeMore').addEventListener('click',()=>{
  const item=state.mapSearchItem?.id===state.previewItemId?state.mapSearchItem:state.items.find(i=>i.id===state.previewItemId);
- if(item)window.PlaceInfo?.open(()=>item.place_id?getPlaceDetails(item):Promise.resolve({displayName:item.name,googleMapsURI:item.maps_url,formattedAddress:item.latitude!=null?`${item.latitude}, ${item.longitude}`:''}));
+ if(item)window.PlaceInfo?.open(()=>getPlaceDetails(item));
 });
 window.addEventListener('resize',positionMapPick);
 function dismissMapPick() {

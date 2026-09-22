@@ -276,3 +276,7 @@ button.route-time-badge:focus-visible{outline:2px solid #c43d3d;outline-offset:2
 }
 
 @media(max-width:850px){#placeCardDetails #placePreview{margin:3px 0}#placeReviewSnippet .review-entry{padding:4px 0}#placeCardDetails{margin-top:3px}}
+
+/* v27: white day transition blends with the original Captain illustration. */
+#dayTransition{background:#fefefe;color:#292929}
+#dayTransition img{filter:none;mix-blend-mode:multiply}
