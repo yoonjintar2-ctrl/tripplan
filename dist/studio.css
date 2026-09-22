@@ -248,3 +248,31 @@ button.route-time-badge:focus-visible{outline:2px solid #c43d3d;outline-offset:2
 }
 
 @media(max-width:850px){.agenda-copy:has(p:empty) strong{max-width:100%}}
+
+/* v26: shallow place preview, clear list order and compact mobile controls. */
+.agenda-number{display:none}
+#dayTransition{align-content:center;gap:10px;font-family:"Noto Sans KR",sans-serif;font-size:clamp(27px,5vw,42px);font-weight:500;letter-spacing:-.035em}
+#dayTransition img{width:88px;height:108px;object-fit:contain;filter:drop-shadow(0 8px 18px #ffffff18)}
+@media(max-width:850px){
+ #placeCardDetails:not([hidden]){grid-template-columns:minmax(0,32%) minmax(0,1fr)}
+ #placeCard .place-thumb,#placeCard .photo-skeleton{flex-basis:calc((100% - 6px)/1.2)!important;width:calc((100% - 6px)/1.2)!important}
+ #placeCardDetails #placeReviewSnippet{overflow-x:hidden;overflow-y:auto;white-space:normal;overflow-wrap:anywhere}
+ #placeReviewSnippet .review-entry,#placeReviewSnippet .review-entry p{width:auto;min-width:0;max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
+ #placeReviewSnippet .review-entry header{display:flex;flex-wrap:wrap;gap:3px;min-width:0}
+ #placeCard:not(.is-collapsed) .place-card-body{display:grid;grid-template-columns:minmax(0,1fr) auto auto;column-gap:6px;align-items:center}
+ #placeCard:not(.is-collapsed) .place-title-row{display:contents}
+ #placeCard:not(.is-collapsed) #placeName{grid-column:1;grid-row:1;max-width:100%;font-size:12px!important}
+ #placeCard:not(.is-collapsed) .place-card-topline{grid-column:2;grid-row:1;gap:4px;align-items:center;margin:0 0 3px;max-width:125px;flex-wrap:wrap}
+ #placeCard:not(.is-collapsed) #togglePlaceCard{grid-column:3;grid-row:1;justify-self:end;min-height:21px;padding:2px 5px;font-size:9px;margin-bottom:3px}
+ #placeCardDetails,#mapSearchPlaceActions{grid-column:1/-1}
+ .route-controls{gap:6px!important}.route-controls button{width:44px!important;height:44px!important;min-width:44px;padding:2px!important;gap:0}
+ .route-controls button span{font-size:18px;line-height:19px;min-width:0}.route-controls button small{font-size:8px;line-height:10px}
+ .agenda-number{display:inline-flex;align-items:center;justify-content:center;flex:0 0 21px;width:21px;height:21px;border-radius:50%;background:#202020;color:#fff;font-size:11px;font-weight:700;line-height:1}
+ .agenda-copy strong{flex-shrink:0!important;max-width:72%}.agenda-copy p{flex:1 1 0!important}
+ .captain-welcome{height:38px!important;min-height:38px!important;padding-bottom:8px!important;margin-bottom:8px!important}
+ #mobileAddScheduleButton{align-self:center}
+ #agendaList{background:#eeeef1;border:1px solid #e0e0e5;border-radius:10px;padding:7px!important;box-shadow:inset 0 2px 5px #00000005;scroll-padding:7px}
+ #agendaList .agenda-item{background:#fff}#agendaList .agenda-item.is-selected{background:#fff3f1}
+}
+
+@media(max-width:850px){#placeCardDetails #placePreview{margin:3px 0}#placeReviewSnippet .review-entry{padding:4px 0}#placeCardDetails{margin-top:3px}}

@@ -556,9 +556,9 @@ function render() {
 
   $("#itemCount").textContent = `${items.length}개의 일정`;
   $("#totalCost").textContent = won(state.items.reduce((sum, item) => sum + (item.settlement_enabled ? Number(item.cost_won || 0) : 0), 0));
-  $("#agendaList").innerHTML = items.length ? items.map(item => {
+  $("#agendaList").innerHTML = items.length ? items.map((item, index) => {
     const current = isCurrentItem(item, items);
-    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p></span>${agendaFaces(item)}</button><button class="agenda-expand" type="button" data-expand-item="${safe(item.id)}" aria-label="${safe(item.name)} 세부 내용 ${state.mobileExpandedId===item.id?'접기':'펼치기'}" aria-expanded="${state.mobileExpandedId===item.id}">${state.mobileExpandedId===item.id?'접기':'자세히'}</button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button>${item.id===state.selectedId && item.id===state.mobileExpandedId?`<div class="mobile-agenda-details"><strong>${safe(item.name)}</strong><span>${safe(item.item_date)} · ${safe(formatTime(item.start_time))}${item.end_time?' — '+safe(formatTime(item.end_time)):''}</span>${item.category?`<span>${safe(item.category)}</span>`:''}${item.memo?`<p>${safe(item.memo)}</p>`:''}${item.settlement_enabled?`<span>${won(item.cost_won || 0)}</span>`:''}</div>`:''}</div>`;
+    return `<div class="agenda-item ${item.id === state.selectedId ? "is-selected" : ""} ${current ? "is-current" : ""}"><button class="agenda-select" type="button" data-item-id="${safe(item.id)}"><span class="agenda-number" aria-label="지도 ${index+1}번">${index+1}</span><span class="agenda-time">${safe(formatTime(item.start_time))}</span><span class="agenda-copy"><strong><span>${safe(item.name)}</span><small>${safe(item.category || "미분류")}</small></strong><p>${safe(item.memo || "")}</p></span>${agendaFaces(item)}</button><button class="agenda-expand" type="button" data-expand-item="${safe(item.id)}" aria-label="${safe(item.name)} 세부 내용 ${state.mobileExpandedId===item.id?'접기':'펼치기'}" aria-expanded="${state.mobileExpandedId===item.id}">${state.mobileExpandedId===item.id?'접기':'자세히'}</button><button class="agenda-edit-button" type="button" data-edit-item="${safe(item.id)}" aria-label="${safe(item.name)} 수정">✎</button>${item.id===state.selectedId && item.id===state.mobileExpandedId?`<div class="mobile-agenda-details"><strong>${safe(item.name)}</strong><span>${safe(item.item_date)} · ${safe(formatTime(item.start_time))}${item.end_time?' — '+safe(formatTime(item.end_time)):''}</span>${item.category?`<span>${safe(item.category)}</span>`:''}${item.memo?`<p>${safe(item.memo)}</p>`:''}${item.settlement_enabled?`<span>${won(item.cost_won || 0)}</span>`:''}</div>`:''}</div>`;
   }).join("") : `<div class="agenda-empty captain-empty"><img src="./assets/captain/guide-map.webp" width="98" height="120" alt="지도를 함께 보는 캡틴비어"><strong>아직 비어 있는 여행 지도</strong><p>가고 싶은 곳 하나로 시작해요.<br>제가 옆에서 함께할게요.</p></div>`;
   $$("[data-item-id]").forEach(button => {
     button.addEventListener("click", () => selectStop(button.dataset.itemId, true));
@@ -987,7 +987,7 @@ async function searchGooglePlaces(rawQuery) {
 
 async function saveTransportMode(itemId,mode){
   if(!canEdit())throw Error('이 여행을 수정할 권한이 없습니다.');
-  if(!['WALKING','DRIVING','TRANSIT','OTHER'].includes(mode))throw Error('지원하지 않는 이동수단입니다.');
+  if(!['WALKING','DRIVING','OTHER'].includes(mode))throw Error('지원하지 않는 이동수단입니다.');
   const tripId=state.trip.id,item=state.items.find(i=>i.id===itemId);
   if(!item)throw Error('일정을 다시 선택해 주세요.');
   if(isGuestTrip()){
@@ -995,7 +995,7 @@ async function saveTransportMode(itemId,mode){
     if(state.guestStorageError){item.transport_mode=previous;state.guestBook=before;throw Error(state.guestStorageError);}
   }else{
     const {data,error}=await supabase.from('mt_itinerary_items').update({transport_mode:mode}).eq('id',itemId).eq('trip_id',tripId).select('id,transport_mode').single();
-    if(error||!data)throw Error(error?.message||'이동수단을 저장하지 못했습니다.');
+    if(error||!data)throw Error(error?.code==='23514'?'이동수단 저장 설정을 업데이트해야 합니다. 관리자에게 알려주세요.':error?.message||'이동수단을 저장하지 못했습니다.');
     if(state.trip?.id===tripId){const current=state.items.find(i=>i.id===itemId);if(current)current.transport_mode=data.transport_mode;setSync("실시간 저장됨");}
   }
   showToast('이동수단을 저장했습니다.');
@@ -1976,7 +1976,7 @@ async function navigateStop(direction){
   if(target<state.trip.start_date||target>state.trip.end_date)return;
   const token=++dayTransitionToken,tripId=state.trip.id,origin=state.activeDate,overlay=$('#dayTransition');
   state.dayTransitionBusy=true;$('#previousStop').disabled=true;$('#nextStop').disabled=true;
-  overlay.textContent=direction>0?'다음날':'하루 전';overlay.hidden=false;
+  overlay.innerHTML=`<img src="./assets/captain/guide-flag.webp" alt=""><span>${direction>0?'다음날':'하루 전'}</span>`;overlay.hidden=false;
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   try{
     if(!reduced)await sleep(450);

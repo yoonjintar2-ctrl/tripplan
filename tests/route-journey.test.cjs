@@ -6,11 +6,13 @@ vm.runInContext(fs.readFileSync('dist/route-journey.js','utf8'),dom.getInternalV
 const R=w.RouteJourney,a={latitude:37,longitude:127},b={latitude:38,longitude:128};
 const route=(mode,seconds)=>({mode,seconds,path:[{lat:37,lng:127},{lat:38,lng:128}],parts:[],warnings:[]});
 (async()=>{
+assert.equal(R.nextMode('walk'),'DRIVING');assert.equal(R.nextMode('drive'),'OTHER');assert.equal(R.nextMode('other'),'WALKING');
 let calls=[];let result=await R.choose(a,b,async(_,__,m)=>{calls.push(m);return route('walk',1800)});assert.equal(result.mode,'walk');assert.equal(calls.length,1);
-result=await R.choose(a,b,async(_,__,m)=>m==='WALKING'?route('walk',1801):m==='DRIVING'?route('drive',600):route('subway',500));assert.equal(result.mode,'subway');
+result=await R.choose(a,b,async(_,__,m)=>m==='WALKING'?route('walk',1801):m==='DRIVING'?route('drive',600):route('subway',500));assert.equal(result.mode,'drive');
 result=await R.choose(a,b,async(_,__,m)=>m==='WALKING'?null:m==='DRIVING'?route('drive',600):route('subway',900));assert.equal(result.mode,'drive');
 result=await R.choose(a,b,async()=>null);assert.equal(result.mode,'other');assert.equal(result.path.length,2);assert.equal(result.seconds,null);assert.equal(result.parts[0].mode,'walk');assert.equal(result.dashed,true);
 result=await R.choose(a,b,async()=>{throw Error('Routes API unavailable')});assert.equal(result.mode,'other');
+calls=[];await R.choose(a,b,async(_,__,mode)=>{calls.push(mode);return null});assert.deepEqual(calls,['WALKING','DRIVING']);
 const n=R.normalize({path:[{lat:1,lng:1},{lat:2,lng:2}],durationMillis:60000,legs:[{steps:[{travelMode:'TRANSIT',path:[{lat:1,lng:1},{lat:2,lng:2}],transitDetails:{transitLine:{vehicle:{type:'SUBWAY'}}}}]}]},'TRANSIT');assert.equal(n.mode,'subway');assert.equal(n.parts[0].mode,'subway');assert.equal(n.seconds,60);
 assert.equal(R.samplePath([{lat:0,lng:0},{lat:0,lng:1},{lat:0,lng:3}],.5).lng,1.5);
 const markers=[],polylines=[];
@@ -32,7 +34,6 @@ const fresh=[{...a,id:'c',longitude:129},{...b,id:'d',longitude:130}];
 await R.update(map,fresh,'toggle','d',opts);
 let badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;
 assert.match(badge.textContent,/차량 10분/);badge.click();await settle();
-assert.equal(saved.at(-1).mode,'TRANSIT');badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;assert.match(badge.textContent,/대중/);badge.click();await settle();
 assert.equal(saved.at(-1).mode,'OTHER');badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;assert.equal(badge.textContent,'기타 이동수단');assert(polylines.some(p=>p.map&&p.icons));draw(1);assert.equal(markers.filter(m=>m.map&&m.content.className==='captain-journey').at(-1).content.dataset.mode,'walk');badge.click();await settle();
 assert.equal(saved.at(-1).mode,'WALKING');assert.equal(saved.at(-1).id,'d');
 badge=markers.filter(m=>m.map&&m.content.className==='route-time-badge').at(-1).content;assert.match(badge.textContent,/도보 40분/);

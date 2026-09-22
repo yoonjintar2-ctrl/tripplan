@@ -1,5 +1,6 @@
 /* Google route geometry is shared by polylines, time badges, and Captain motion. */
 (()=>{
+ let noticeTimer;
  const cache=new Map(),point=p=>({lat:Number(typeof p.lat==='function'?p.lat():p.lat),lng:Number(typeof p.lng==='function'?p.lng():p.lng)});
  const pos=i=>({lat:Number(i.latitude),lng:Number(i.longitude)});
  const valid=p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng);
@@ -18,21 +19,19 @@
   return routes?.[0]?normalize(routes[0],mode):null;
  }
  const direct=(a,b)=>({path:[pos(a),pos(b)],parts:[{path:[pos(a),pos(b)],mode:'walk'}],mode:'other',dashed:true,seconds:null,warnings:[]});
- const nextMode=mode=>mode==='walk'?'DRIVING':mode==='drive'?'TRANSIT':mode==='transit'||mode==='subway'?'OTHER':'WALKING';
+ const nextMode=mode=>mode==='walk'?'DRIVING':mode==='drive'?'OTHER':mode==='transit'||mode==='subway'?'OTHER':'WALKING';
  async function choose(a,b,fetchRoute=request){
   const jump=direct(a,b);
   let walk;try{walk=await fetchRoute(a,b,'WALKING');}catch(error){if(/denied|not.*enabled|unavailable|billing|key/i.test(error.message||''))return jump;}
   if(walk&&walk.seconds<=1800)return walk;
-  const results=await Promise.allSettled(['DRIVING','TRANSIT'].map(m=>fetchRoute(a,b,m)));
-  const [drive,transit]=results.map(r=>r.status==='fulfilled'?r.value:null);
-  if(transit&&(!drive || (transit.mode==='subway'&&transit.seconds<drive.seconds)))return transit;
+  let drive;try{drive=await fetchRoute(a,b,'DRIVING');}catch{}
   return drive||jump;
  }
  async function leg(a,b,mode=b.transport_mode){
-  if(mode==='OTHER')return direct(a,b);
+  if(mode==='OTHER'||mode==='TRANSIT')return direct(a,b);
   const key=JSON.stringify([pos(a),pos(b),mode||null]),saved=cache.get(key);
   if(saved&&Date.now()-saved.time<300000)return (await saved.promise)||direct(a,b);
-  const promise=['WALKING','DRIVING','TRANSIT'].includes(mode)?request(a,b,mode).catch(()=>null):choose(a,b);cache.set(key,{time:Date.now(),promise});
+  const promise=['WALKING','DRIVING'].includes(mode)?request(a,b,mode).catch(()=>null):choose(a,b);cache.set(key,{time:Date.now(),promise});
   if(cache.size>250)cache.delete(cache.keys().next().value);
   return (await promise)||direct(a,b);
  }
@@ -90,6 +89,7 @@
   const oldSelection=selection,oldContext=context;context=signature;selection=selectedId;const mine=++epoch;
   stop();clean();if(marker)marker.map=null;map=nextMap;
   document.querySelector('.map-panel')?.classList.remove('captain-in-transit');
+  clearTimeout(noticeTimer);
   const oldNotice=document.getElementById('routeNotices');if(oldNotice){oldNotice.hidden=true;oldNotice.textContent='';}
   if(!items.length)return;
   const {AdvancedMarkerElement}=await google.maps.importLibrary('marker');
@@ -97,7 +97,7 @@
   if(mine!==epoch)return;
   const warnings=new Set();legs.forEach(l=>l.warnings.forEach(w=>warnings.add(w)));
   const notice=document.getElementById('routeNotices');
-  if(notice){notice.textContent=[...warnings].join(' ');notice.hidden=!warnings.size;}
+  if(notice){notice.textContent=[...warnings].join(' ');notice.hidden=!warnings.size;if(warnings.size)noticeTimer=setTimeout(()=>{notice.hidden=true;},4500);}
   legs.forEach((l,index)=>{
    if(!l.path.length)return;
    if(l.dashed)lines.push(new google.maps.Polyline({map,path:l.path,strokeOpacity:0,icons:[{icon:{path:'M 0,-1 0,1',strokeColor:'#68646e',strokeOpacity:1,scale:2},offset:'0',repeat:'12px'}],zIndex:5}));
@@ -112,10 +112,9 @@
    badge.addEventListener('click',async event=>{
     event.stopPropagation();if(badge.disabled||mine!==epoch)return;badge.disabled=true;
     const preference=items[index+1].transport_mode;
-    let next=preference?({WALKING:'DRIVING',DRIVING:'TRANSIT',TRANSIT:'OTHER',OTHER:'WALKING'})[preference]:nextMode(l.mode);
+    let next=preference?({WALKING:'DRIVING',DRIVING:'OTHER',TRANSIT:'WALKING',OTHER:'WALKING'})[preference]:nextMode(l.mode);
     try{
      let candidate=await leg(items[index],items[index+1],next);
-     if(next==='TRANSIT'&&candidate.dashed){next='OTHER';candidate=await leg(items[index],items[index+1],next);}
      if(mine!==epoch)return;
      if(candidate.dashed&&next!=='OTHER')options.onError?.('경로를 찾지 못해 시간 없이 점선으로 연결합니다.');
      await options.onModeChange(items[index+1].id,next);
